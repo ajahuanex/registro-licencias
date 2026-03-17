@@ -1,0 +1,103 @@
+.sidenav-container {
+  height: 100vh;
+  background-color: #f4f7f6;
+}
+
+.app-sidenav {
+  width: 260px;
+  background-color: #ffffff;
+  border-right: none;
+}
+
+.sidenav-header {
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  margin-bottom: 1rem;
+
+  .sidenav-logo {
+    max-height: 50px;
+    margin-bottom: 0.75rem;
+  }
+
+  .brand-text {
+    text-align: center;
+    color: #0a3d62;
+
+    h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    span {
+      font-size: 0.85rem;
+      opacity: 0.8;
+      font-weight: 500;
+    }
+  }
+}
+
+mat-nav-list {
+  padding-top: 0;
+
+  .active-link {
+    background-color: rgba(60, 99, 130, 0.08);
+    color: #0a3d62;
+    border-left: 4px solid #0a3d62;
+    
+    mat-icon {
+      color: #0a3d62;
+    }
+  }
+
+  a[mat-list-item] {
+    border-left: 4px solid transparent;
+    transition: all 0.2s ease;
+
+    &:hover:not(.active-link) {
+      background-color: rgba(0,0,0,0.02);
+    }
+  }
+}
+
+.app-header {
+  background: white;
+  color: #333;
+  margin-bottom: 2px; // for shadow
+  
+  .spacer {
+    flex: 1 1 auto;
+  }
+
+  .user-context {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-right: 1.5rem;
+    padding: 0.4rem 1rem;
+    background-color: #f8fafc;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #475569;
+
+    mat-icon {
+      font-size: 1.2rem;
+      width: 1.2rem;
+      height: 1.2rem;
+      color: #0a3d62;
+    }
+  }
+}
+
+.main-content {
+  padding: 1.5rem;
+  height: calc(100vh - 64px - 3rem); // Toolbar height + padding
+  overflow-y: auto;
+  box-sizing: border-box;
+}

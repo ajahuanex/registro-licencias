@@ -1,0 +1,87 @@
+<div class="registro-wrapper slide-up">
+  
+  <div class="header-section">
+    <h1>Registro de Expediente</h1>
+    <p>Ingrese los detalles de la solicitud de licencia.</p>
+  </div>
+
+  <mat-card class="form-card mat-elevation-z3">
+    <mat-card-content>
+      
+      <form [formGroup]="form" (ngSubmit)="onSubmit()" class="expediente-form">
+        
+        <!-- Apellidos y Nombres -->
+        <mat-form-field appearance="outline" class="full-width col-span-2">
+          <mat-label>Apellidos y Nombres Completos</mat-label>
+          <input matInput formControlName="apellidos_nombres" placeholder="Ej. PEREZ QUISPE JUAN JOSE">
+          <mat-icon matPrefix>person</mat-icon>
+          <mat-hint>Obligatorio y se guardará en MAYÚSCULAS</mat-hint>
+          @if (form.controls.apellidos_nombres.hasError('required') && form.controls.apellidos_nombres.touched) {
+            <mat-error>Los nombres y apellidos son obligatorios</mat-error>
+          }
+        </mat-form-field>
+
+        <!-- Trámite y Categoría -->
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Tipo de Trámite</mat-label>
+            <mat-select formControlName="tramite">
+              @for (opcion of tramites; track opcion) {
+                <mat-option [value]="opcion">{{ opcion }}</mat-option>
+              }
+            </mat-select>
+            <mat-icon matPrefix>description</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Categoría</mat-label>
+            <mat-select formControlName="categoria">
+              @for (cat of categorias; track cat) {
+                <mat-option [value]="cat">{{ cat }}</mat-option>
+              }
+            </mat-select>
+            <mat-icon matPrefix>drive_eta</mat-icon>
+          </mat-form-field>
+        </div>
+
+        <!-- Lugar de Entrega -->
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="full-width col-span-2">
+            <mat-label>Lugar de Entrega</mat-label>
+            <mat-select formControlName="lugar_entrega">
+              @for (lugar of lugares; track lugar) {
+                <mat-option [value]="lugar">{{ lugar }}</mat-option>
+              }
+            </mat-select>
+            <mat-icon matPrefix>location_on</mat-icon>
+          </mat-form-field>
+        </div>
+
+        <!-- Observaciones -->
+        <mat-form-field appearance="outline" class="full-width col-span-2">
+          <mat-label>Observaciones (Opcional)</mat-label>
+          <textarea matInput formControlName="observaciones" rows="3" placeholder="Añadir notas o comentarios sobre el expediente..."></textarea>
+          <mat-icon matPrefix>notes</mat-icon>
+        </mat-form-field>
+
+        <!-- Actions -->
+        <div class="actions">
+          <button mat-button type="button" (click)="form.reset({tramite: 'Duplicado', categoria: 'AI', lugar_entrega: 'Puno'})" [disabled]="isLoading()">
+            Limpiar Formulario
+          </button>
+          
+          <button mat-flat-button color="primary" type="submit" [disabled]="form.invalid || isLoading()" class="submit-btn scale-on-hover">
+             <mat-icon>save</mat-icon>
+             @if (isLoading()) {
+                <span>Guardando...</span>
+             } @else {
+                <span>Registrar Expediente</span>
+             }
+          </button>
+        </div>
+
+      </form>
+
+    </mat-card-content>
+  </mat-card>
+</div>

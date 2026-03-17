@@ -1,0 +1,105 @@
+<div class="report-wrapper fade-in printable-area">
+  
+  <div class="header-actions">
+    <div class="titles">
+      <h1>Reporte Consolidado Diario</h1>
+      <p>Vista general de expedientes ingresados hoy al SNC.</p>
+    </div>
+
+    <div class="actions no-print">
+      <button mat-icon-button (click)="loadData()" matTooltip="Actualizar">
+        <mat-icon [class.rolling]="isLoading()">sync</mat-icon>
+      </button>
+
+      <button mat-raised-button color="primary" [matMenuTriggerFor]="exportMenu" [disabled]="records().length === 0">
+        <mat-icon>file_download</mat-icon>
+        Exportar
+      </button>
+      
+      <mat-menu #exportMenu="matMenu">
+        <button mat-menu-item (click)="exportToExcel()">
+          <mat-icon>table_view</mat-icon>
+          <span>Excel (.xlsx)</span>
+        </button>
+        <button mat-menu-item (click)="exportToPDF()">
+          <mat-icon>picture_as_pdf</mat-icon>
+          <span>Documento PDF</span>
+        </button>
+        <mat-divider></mat-divider>
+        <button mat-menu-item (click)="printReport()">
+          <mat-icon>print</mat-icon>
+          <span>Imprimir Reporte</span>
+        </button>
+      </mat-menu>
+    </div>
+  </div>
+
+  <mat-card class="mat-elevation-z3">
+    @if (isLoading()) {
+      <div class="loading-overlay">
+        <div class="spinner"></div>
+        <span>Cargando registros...</span>
+      </div>
+    } @else {
+      <div class="table-container">
+        <table mat-table [dataSource]="records()" class="full-width-table">
+
+          <ng-container matColumnDef="fecha">
+            <th mat-header-cell *matHeaderCellDef> Hora Reg. </th>
+            <td mat-cell *matCellDef="let element"> {{element.fecha_registro | date:'HH:mm'}} </td>
+          </ng-container>
+
+          <ng-container matColumnDef="operador">
+            <th mat-header-cell *matHeaderCellDef> Operador </th>
+            <td mat-cell *matCellDef="let element"> {{element.expand?.operador?.nombre}} </td>
+          </ng-container>
+
+          <ng-container matColumnDef="dni">
+            <th mat-header-cell *matHeaderCellDef> DNI Operador </th>
+            <td mat-cell *matCellDef="let element"> <span class="badge">{{element.expand?.operador?.dni}}</span> </td>
+          </ng-container>
+
+          <ng-container matColumnDef="apellidos_nombres">
+            <th mat-header-cell *matHeaderCellDef> Solicitante </th>
+            <td mat-cell *matCellDef="let element"> <strong>{{element.apellidos_nombres}}</strong> </td>
+          </ng-container>
+
+          <ng-container matColumnDef="tramite">
+            <th mat-header-cell *matHeaderCellDef> Trámite </th>
+            <td mat-cell *matCellDef="let element"> 
+               <span class="status-chip" [class.dup]="element.tramite === 'Duplicado'" [class.rev]="element.tramite === 'Revalidación'">
+                  {{element.tramite}}
+               </span>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="categoria">
+            <th mat-header-cell *matHeaderCellDef> Categoría </th>
+            <td mat-cell *matCellDef="let element"> {{element.categoria}} </td>
+          </ng-container>
+
+          <ng-container matColumnDef="lugar">
+            <th mat-header-cell *matHeaderCellDef> Lugar Entrega </th>
+            <td mat-cell *matCellDef="let element"> {{element.lugar_entrega}} </td>
+          </ng-container>
+
+          <ng-container matColumnDef="observaciones">
+            <th mat-header-cell *matHeaderCellDef> Observaciones </th>
+            <td mat-cell *matCellDef="let element" class="obs-cell"> 
+                <span class="truncate" [title]="element.observaciones">{{element.observaciones || '-'}}</span> 
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="table-row-hover"></tr>
+          
+          <tr class="mat-row" *matNoDataRow>
+            <td class="mat-cell empty-cell" [attr.colspan]="8">
+              No se registraron expedientes el día de hoy.
+            </td>
+          </tr>
+        </table>
+      </div>
+    }
+  </mat-card>
+</div>

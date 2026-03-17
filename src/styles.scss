@@ -1,1 +1,72 @@
-/* You can add global styles to this file, and also import other style files */
+@use '@angular/material' as mat;
+
+@include mat.core();
+
+$my-theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$azure-palette,
+  ),
+  typography: (
+    use-system-variables: true,
+  ),
+));
+
+html {
+  @include mat.all-component-themes($my-theme);
+}
+
+/* Global Styles */
+html, body { 
+  height: 100%; 
+  margin: 0; 
+  padding: 0;
+  font-family: 'Roboto', "Helvetica Neue", sans-serif;
+  background-color: #f8fafc;
+  color: #334155;
+}
+
+/* Custom Snackbars */
+.success-snackbar {
+  background-color: #059669;
+  color: white;
+  .mat-mdc-button { 
+    color: #a7f3d0; 
+  }
+}
+
+.error-snackbar {
+  background-color: #dc2626;
+  color: white;
+  .mat-mdc-button { 
+    color: #fecaca; 
+  }
+}
+
+/* Utility classes */
+.blur-in {
+  animation: blurIn 0.4s ease-out forwards;
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out forwards;
+}
+
+.fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes blurIn {
+  0% { opacity: 0; filter: blur(4px); transform: translateY(10px); }
+  100% { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+
+@keyframes slideUp {
+  0% { opacity: 0; transform: translateY(15px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}

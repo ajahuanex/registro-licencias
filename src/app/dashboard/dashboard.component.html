@@ -1,0 +1,78 @@
+<div class="dashboard-wrapper blur-in">
+  
+  <header class="dashboard-header">
+    <div>
+      <h1>Resumen Diario</h1>
+      <p class="subtitle">Consolidado de expedientes registrados en la jornada de hoy ({{ currentDate | date:'dd/MM/yyyy' }})</p>
+    </div>
+    <button mat-icon-button (click)="loadDailyStats()" matTooltip="Actualizar datos">
+      <mat-icon [class.rolling]="isLoading()">refresh</mat-icon>
+    </button>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <span>Cargando estadísticas...</span>
+    </div>
+  } @else {
+    <div class="stats-grid">
+      
+      <!-- Total -->
+      <mat-card class="stat-card total-card mat-elevation-z2">
+        <div class="stat-icon-wrapper">
+          <mat-icon>folder_open</mat-icon>
+        </div>
+        <div class="stat-content">
+          <span class="label">Total Expedientes</span>
+          <span class="value">{{ stats().total }}</span>
+        </div>
+      </mat-card>
+
+      <!-- Duplicados -->
+      <mat-card class="stat-card duplicados-card mat-elevation-z2">
+        <div class="stat-icon-wrapper">
+          <mat-icon>content_copy</mat-icon>
+        </div>
+        <div class="stat-content">
+          <span class="label">Duplicados</span>
+          <span class="value">{{ stats().duplicados }}</span>
+        </div>
+      </mat-card>
+
+      <!-- Revalidaciones -->
+      <mat-card class="stat-card revalidaciones-card mat-elevation-z2">
+        <div class="stat-icon-wrapper">
+          <mat-icon>autorenew</mat-icon>
+        </div>
+        <div class="stat-content">
+          <span class="label">Revalidaciones</span>
+          <span class="value">{{ stats().revalidaciones }}</span>
+        </div>
+      </mat-card>
+
+      <!-- Puno -->
+      <mat-card class="stat-card location-card mat-elevation-z2">
+        <div class="stat-icon-wrapper puno-icon">
+          <mat-icon>location_city</mat-icon>
+        </div>
+        <div class="stat-content">
+          <span class="label">Entrega en Puno</span>
+          <span class="value">{{ stats().puno }}</span>
+        </div>
+      </mat-card>
+
+      <!-- Juliaca -->
+      <mat-card class="stat-card location-card mat-elevation-z2">
+        <div class="stat-icon-wrapper juliaca-icon">
+          <mat-icon>storefront</mat-icon>
+        </div>
+        <div class="stat-content">
+          <span class="label">Entrega en Juliaca</span>
+          <span class="value">{{ stats().juliaca }}</span>
+        </div>
+      </mat-card>
+
+    </div>
+  }
+</div>

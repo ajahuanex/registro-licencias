@@ -1,0 +1,141 @@
+.dashboard-wrapper {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.blur-in {
+  animation: blurIn 0.4s ease-out forwards;
+}
+
+@keyframes blurIn {
+  0% { opacity: 0; filter: blur(4px); transform: translateY(10px); }
+  100% { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 2rem;
+
+  h1 {
+    font-size: 1.8rem;
+    color: #2c3e50;
+    margin: 0 0 0.5rem 0;
+    font-weight: 700;
+  }
+  
+  .subtitle {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.95rem;
+  }
+
+  .rolling {
+    animation: rotate 1s linear infinite;
+  }
+}
+
+@keyframes rotate {
+  100% { transform: rotate(360deg); }
+}
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  gap: 1rem;
+  color: #64748b;
+
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(10, 61, 98, 0.1);
+    border-top-color: #0a3d62;
+    border-radius: 50%;
+    animation: rotate 1s linear infinite;
+  }
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.5rem;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  transition: transform 0.2s, box-shadow 0.2s;
+  background: white;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+
+  .stat-icon-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    margin-right: 1.25rem;
+
+    mat-icon {
+      font-size: 1.75rem;
+      width: 1.75rem;
+      height: 1.75rem;
+    }
+  }
+
+  .stat-content {
+    display: flex;
+    flex-direction: column;
+
+    .label {
+      font-size: 0.85rem;
+      color: #64748b;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+
+    .value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #1e293b;
+      line-height: 1;
+    }
+  }
+}
+
+// Semantic colors for cards
+.total-card .stat-icon-wrapper {
+  background-color: #e0e7ff;
+  color: #4f46e5;
+}
+.duplicados-card .stat-icon-wrapper {
+  background-color: #fce7f3;
+  color: #db2777;
+}
+.revalidaciones-card .stat-icon-wrapper {
+  background-color: #dcfce7;
+  color: #16a34a;
+}
+.puno-icon {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+.juliaca-icon {
+  background-color: #e0f2fe;
+  color: #0284c7;
+}
