@@ -12,8 +12,13 @@ $my-theme: mat.define-theme((
   ),
 ));
 
+:root {
+  --base-font-size: 16px;
+}
+
 html {
   @include mat.all-component-themes($my-theme);
+  font-size: var(--base-font-size);
 }
 
 /* Global Styles */
@@ -24,6 +29,34 @@ html, body {
   font-family: 'Roboto', "Helvetica Neue", sans-serif;
   background-color: #f8fafc;
   color: #334155;
+}
+
+/* Dark Theme Overrides */
+.dark-theme {
+  background-color: #0f172a;
+  color: #e2e8f0;
+
+  .mat-mdc-card, .mat-mdc-table, .mat-mdc-dialog-surface, .mat-mdc-menu-panel, .app-header, .app-sidenav, .mat-drawer-container {
+    background-color: #1e293b !important;
+    color: #f1f5f9 !important;
+  }
+
+  .mat-mdc-header-row {
+    background-color: #0f172a !important;
+    th { color: #cbd5e1 !important; }
+  }
+
+  .mat-mdc-cell {
+    color: #e2e8f0 !important;
+  }
+  
+  .table-row-hover:hover {
+    background-color: #334155 !important;
+  }
+
+  h1, h2, h3, h4, span, p, label {
+    color: inherit;
+  }
 }
 
 /* Custom Snackbars */

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { ExpedienteService } from '../core/services/expediente.service';
+import { AuthService } from '../core/services/auth.service';
 import { RecordModel } from 'pocketbase';
 
 interface DashboardStats {
@@ -22,6 +23,7 @@ interface DashboardStats {
 })
 export class DashboardComponent implements OnInit {
   private expedienteService = inject(ExpedienteService);
+  authService = inject(AuthService);
   
   stats = signal<DashboardStats>({
     total: 0,
@@ -32,6 +34,7 @@ export class DashboardComponent implements OnInit {
   });
 
   isLoading = signal<boolean>(true);
+  currentDate = new Date();
 
   async ngOnInit() {
     await this.loadDailyStats();
@@ -40,9 +43,15 @@ export class DashboardComponent implements OnInit {
   async loadDailyStats() {
     this.isLoading.set(true);
     try {
-      // Get today's date in YYYY-MM-DD
+      const user = this.authService.currentUser();
       const dateString = new Date().toISOString().split('T')[0];
-      const records = await this.expedienteService.getDailyConsolidated(dateString);
+      
+      let records: RecordModel[] = [];
+      if (user?.['perfil'] === 'REGISTRADOR' || user?.['perfil'] === 'SUPERVISOR') {
+        records = await this.expedienteService.getDailyConsolidated(dateString, user.id);
+      } else {
+        records = await this.expedienteService.getDailyConsolidated(dateString);
+      }
       
       this.calculateStats(records);
     } catch(err) {

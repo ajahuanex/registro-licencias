@@ -1,6 +1,6 @@
 import { Injectable, signal, computed } from '@angular/core';
 import { Router } from '@angular/router';
-import { Admin, RecordModel } from 'pocketbase';
+import { RecordModel, AuthModel } from 'pocketbase';
 import { PocketbaseService } from './pocketbase.service';
 
 @Injectable({
@@ -8,7 +8,7 @@ import { PocketbaseService } from './pocketbase.service';
 })
 export class AuthService {
   // Reactive Signal holding the current user state
-  public currentUser = signal<RecordModel | Admin | null>(null);
+  public currentUser = signal<AuthModel>(null);
   
   // Computed signal to determine if user is authenticated
   public isLoggedIn = computed(() => this.currentUser() !== null);
@@ -27,10 +27,14 @@ export class AuthService {
   }
 
   async login(dni: string, password: string): Promise<boolean> {
+    console.log(`[AUTH DEBUG] Intentando login con DNI: "${dni}", Password: "${password}"`);
     try {
-      await this.pbService.pb.collection('operadores').authWithPassword(dni, password);
+      this.pbService.pb.authStore.clear(); // Limpiar posible token viejo o corrupto
+      const authData = await this.pbService.pb.collection('operadores').authWithPassword(dni, password);
+      console.log("[AUTH DEBUG] Login exitoso, authData:", authData);
       return true;
     } catch (err: any) {
+      console.error('[AUTH DEBUG] Error completo de PocketBase:', err);
       console.error('Authentication Error:', err.message);
       return false;
     }

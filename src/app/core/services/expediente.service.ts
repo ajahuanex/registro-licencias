@@ -4,8 +4,10 @@ import { RecordModel } from 'pocketbase';
 
 export interface ExpedienteCreate {
   operador: string;
+  dni_solicitante: string;
   apellidos_nombres: string;
   tramite: string;
+  estado: string;
   categoria: string;
   lugar_entrega: string;
   observaciones?: string;
@@ -43,7 +45,7 @@ export class ExpedienteService {
       const datePrefix = isoDateString.split('T')[0];
       
       const records = await this.pbService.pb.collection(this.collectionName).getList(1, 1, {
-        filter: `apellidos_nombres = "${apellidosNombres}" && fecha_registro ~ "${datePrefix}"`
+        filter: `apellidos_nombres = "${apellidosNombres}" && fecha_registro >= "${datePrefix} 00:00:00" && fecha_registro <= "${datePrefix} 23:59:59"`
       });
 
       return records.totalItems > 0;
@@ -55,18 +57,28 @@ export class ExpedienteService {
   }
 
   /**
-   * Retrieves the daily summary for all operators.
+   * Retrieves the daily summary for all operators or a specific one.
    */
-  async getDailyConsolidated(dateStringYYYYMMDD: string): Promise<RecordModel[]> {
+  async getDailyConsolidated(dateStringYYYYMMDD: string, operadorId?: string): Promise<RecordModel[]> {
      try {
-       const result = await this.pbService.pb.collection(this.collectionName).getFullList({
-         filter: `fecha_registro ~ "${dateStringYYYYMMDD}"`,
-         sort: '-created',
+       let filterStr = `fecha_registro >= "${dateStringYYYYMMDD} 00:00:00" && fecha_registro <= "${dateStringYYYYMMDD} 23:59:59"`;
+       if (operadorId) {
+         filterStr += ` && operador = "${operadorId}"`;
+       }
+       const queryOpts = {
+         filter: filterStr,
+         sort: '-fecha_registro',
          expand: 'operador'
-       });
+       };
+       console.log("[EXPEDIENTES DEBUG] Ejecutando getFullList con opciones:", queryOpts);
+       const result = await this.pbService.pb.collection(this.collectionName).getFullList(queryOpts);
+       console.log("[EXPEDIENTES DEBUG] Registros obtenidos:", result.length);
        return result;
-     } catch(error) {
-        console.error("Failed to load daily report:", error);
+     } catch(error: any) {
+         console.error("[EXPEDIENTES DEBUG] Failed to load daily report:", error);
+         if (error.response) {
+            console.error("[EXPEDIENTES DEBUG] PocketBase Response JSON:", JSON.stringify(error.response, null, 2));
+         }
         return [];
      }
   }

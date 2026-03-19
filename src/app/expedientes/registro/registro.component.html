@@ -10,16 +10,30 @@
       
       <form [formGroup]="form" (ngSubmit)="onSubmit()" class="expediente-form">
         
-        <!-- Apellidos y Nombres -->
-        <mat-form-field appearance="outline" class="full-width col-span-2">
-          <mat-label>Apellidos y Nombres Completos</mat-label>
-          <input matInput formControlName="apellidos_nombres" placeholder="Ej. PEREZ QUISPE JUAN JOSE">
-          <mat-icon matPrefix>person</mat-icon>
-          <mat-hint>Obligatorio y se guardará en MAYÚSCULAS</mat-hint>
-          @if (form.controls.apellidos_nombres.hasError('required') && form.controls.apellidos_nombres.touched) {
-            <mat-error>Los nombres y apellidos son obligatorios</mat-error>
-          }
-        </mat-form-field>
+        <!-- DNI y Apellidos -->
+        <div class="form-row">
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>DNI del Solicitante</mat-label>
+            <input matInput formControlName="dni_solicitante" placeholder="Ej. 12345678" maxlength="8">
+            <mat-icon matPrefix>badge</mat-icon>
+            @if (form.controls.dni_solicitante.hasError('required') && form.controls.dni_solicitante.touched) {
+              <mat-error>El DNI es obligatorio</mat-error>
+            }
+            @if (form.controls.dni_solicitante.hasError('pattern') && form.controls.dni_solicitante.touched) {
+              <mat-error>Debe tener 8 dígitos</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Apellidos y Nombres Completos</mat-label>
+            <input matInput formControlName="apellidos_nombres" placeholder="Ej. PEREZ QUISPE JUAN JOSE">
+            <mat-icon matPrefix>person</mat-icon>
+            <mat-hint>Se guardará en MAYÚSCULAS</mat-hint>
+            @if (form.controls.apellidos_nombres.hasError('required') && form.controls.apellidos_nombres.touched) {
+              <mat-error>Obligatorio</mat-error>
+            }
+          </mat-form-field>
+        </div>
 
         <!-- Trámite y Categoría -->
         <div class="form-row">
@@ -44,9 +58,9 @@
           </mat-form-field>
         </div>
 
-        <!-- Lugar de Entrega -->
+        <!-- Lugar de Entrega y Estado -->
         <div class="form-row">
-          <mat-form-field appearance="outline" class="full-width col-span-2">
+          <mat-form-field appearance="outline" class="full-width">
             <mat-label>Lugar de Entrega</mat-label>
             <mat-select formControlName="lugar_entrega">
               @for (lugar of lugares; track lugar) {
@@ -54,6 +68,16 @@
               }
             </mat-select>
             <mat-icon matPrefix>location_on</mat-icon>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Estado Inicial</mat-label>
+            <mat-select formControlName="estado">
+              @for (est of estados; track est) {
+                <mat-option [value]="est">{{ est }}</mat-option>
+              }
+            </mat-select>
+            <mat-icon matPrefix>pending_actions</mat-icon>
           </mat-form-field>
         </div>
 
@@ -66,7 +90,7 @@
 
         <!-- Actions -->
         <div class="actions">
-          <button mat-button type="button" (click)="form.reset({tramite: 'Duplicado', categoria: 'AI', lugar_entrega: 'Puno'})" [disabled]="isLoading()">
+          <button mat-button type="button" (click)="form.reset({tramite: 'Duplicado', estado: 'EN PROCESO', categoria: 'AI', lugar_entrega: 'Puno'})" [disabled]="isLoading()">
             Limpiar Formulario
           </button>
           

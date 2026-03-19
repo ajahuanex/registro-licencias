@@ -26,6 +26,14 @@ export const routes: Routes = [
         loadComponent: () => import('./expedientes/registro/registro.component').then(m => m.RegistroComponent)
       },
       {
+        path: 'mis-expedientes',
+        loadComponent: () => import('./mis-expedientes/mis-expedientes').then(m => m.MisExpedientes)
+      },
+      {
+        path: 'operadores',
+        loadComponent: () => import('./operadores/lista/lista').then(m => m.Lista)
+      },
+      {
         path: 'reportes/diario',
         loadComponent: () => import('./reportes/diario/diario.component').then(m => m.DiarioComponent)
       }

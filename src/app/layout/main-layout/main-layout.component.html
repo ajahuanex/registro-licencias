@@ -2,7 +2,7 @@
   
   <mat-sidenav #sidenav mode="side" opened class="app-sidenav mat-elevation-z4">
     <div class="sidenav-header">
-      <img src="assets/img/drtc-logo.png" alt="Logo" class="sidenav-logo" onerror="this.src='https://via.placeholder.com/150x60?text=DRTC'">
+      <img src="img/drtc-logo.png" alt="Logo" class="sidenav-logo" onerror="this.style.display='none'">
       <div class="brand-text">
         <h2>Expedientes</h2>
         <span>Licencias SNC</span>
@@ -20,10 +20,26 @@
         <span matListItemTitle>Registrar Expediente</span>
       </a>
 
-      <a mat-list-item routerLink="/reportes/diario" routerLinkActive="active-link">
-        <mat-icon matListItemIcon>summarize</mat-icon>
-        <span matListItemTitle>Reporte Diario</span>
+      <a mat-list-item routerLink="/mis-expedientes" routerLinkActive="active-link">
+        <mat-icon matListItemIcon>folder_open</mat-icon>
+        <span matListItemTitle>Mis Expedientes</span>
       </a>
+
+      @if (authService.currentUser(); as user) {
+        @if (user?.['perfil'] === 'OTI' || user?.['perfil'] === 'ADMINISTRADOR') {
+          <a mat-list-item routerLink="/reportes/diario" routerLinkActive="active-link">
+            <mat-icon matListItemIcon>summarize</mat-icon>
+            <span matListItemTitle>Reporte Diario</span>
+          </a>
+
+          <mat-divider style="margin: 10px 0"></mat-divider>
+          
+          <a mat-list-item routerLink="/operadores" routerLinkActive="active-link">
+            <mat-icon matListItemIcon>manage_accounts</mat-icon>
+            <span matListItemTitle>Operadores</span>
+          </a>
+        }
+      }
     </mat-nav-list>
   </mat-sidenav>
 
@@ -37,15 +53,65 @@
 
       <!-- User context info -->
       @if (authService.currentUser(); as user) {
-        <div class="user-context">
-          <mat-icon>person</mat-icon>
+        <button mat-button [matMenuTriggerFor]="userMenu" class="user-menu-btn">
+          @if (user?.['avatar']) {
+            <img [src]="'http://127.0.0.1:8090/api/files/operadores/' + user.id + '/' + user?.['avatar']" alt="Avatar" class="avatar-img">
+          } @else {
+            <mat-icon>account_circle</mat-icon>
+          }
           <span class="operator-name">{{ user?.['nombre'] || 'Operador' }}</span>
-        </div>
-      }
+          <mat-icon>arrow_drop_down</mat-icon>
+        </button>
 
-      <button mat-icon-button (click)="onLogout()" matTooltip="Cerrar sesión">
-        <mat-icon>logout</mat-icon>
-      </button>
+        <mat-menu #userMenu="matMenu" class="custom-user-menu">
+          <div class="menu-header">
+            <span class="profile-role">{{ user?.['perfil'] || 'OPERADOR' }}</span>
+            <span class="profile-email">{{ user?.['email'] }}</span>
+          </div>
+          
+          <mat-divider></mat-divider>
+          
+          <button mat-menu-item (click)="fileInput.click()">
+            <mat-icon>add_a_photo</mat-icon>
+            <span>Cambiar Foto</span>
+          </button>
+          <input type="file" #fileInput hidden accept="image/png, image/jpeg, image/webp" (change)="onFileSelected($event)">
+          
+          <mat-divider></mat-divider>
+
+          <button mat-menu-item (click)="themeService.toggleMode()">
+            <mat-icon>{{ themeService.currentMode() === 'light' ? 'dark_mode' : 'light_mode' }}</mat-icon>
+            <span>{{ themeService.currentMode() === 'light' ? 'Modo Oscuro' : 'Modo Claro' }}</span>
+          </button>
+
+          <button mat-menu-item [matMenuTriggerFor]="zoomMenu">
+            <mat-icon>format_size</mat-icon>
+            <span>Tamaño de Letra</span>
+          </button>
+
+          <mat-divider></mat-divider>
+          
+          <button mat-menu-item (click)="onLogout()">
+            <mat-icon color="warn">logout</mat-icon>
+            <span style="color: #f44336">Cerrar Sesión</span>
+          </button>
+        </mat-menu>
+
+        <mat-menu #zoomMenu="matMenu">
+          <button mat-menu-item (click)="themeService.setFontSize('normal')">
+            <mat-icon *ngIf="themeService.currentFontSize() === 'normal'">check</mat-icon>
+            <span [style.padding-left.px]="themeService.currentFontSize() === 'normal' ? 0 : 40">Normal</span>
+          </button>
+          <button mat-menu-item (click)="themeService.setFontSize('large')">
+            <mat-icon *ngIf="themeService.currentFontSize() === 'large'">check</mat-icon>
+            <span [style.padding-left.px]="themeService.currentFontSize() === 'large' ? 0 : 40">Grande</span>
+          </button>
+          <button mat-menu-item (click)="themeService.setFontSize('xlarge')">
+            <mat-icon *ngIf="themeService.currentFontSize() === 'xlarge'">check</mat-icon>
+            <span [style.padding-left.px]="themeService.currentFontSize() === 'xlarge' ? 0 : 40">Extra Grande</span>
+          </button>
+        </mat-menu>
+      }
     </mat-toolbar>
 
     <!-- Main Content Area -->

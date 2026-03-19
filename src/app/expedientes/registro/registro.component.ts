@@ -39,14 +39,17 @@ export class RegistroComponent {
 
   // Requirement: Reactive form group initialization
   form = this.fb.group({
+    dni_solicitante: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],
     apellidos_nombres: ['', [Validators.required, Validators.minLength(3)]],
     tramite: ['Duplicado', Validators.required],
+    estado: ['EN PROCESO', Validators.required],
     categoria: ['AI', Validators.required],
     lugar_entrega: ['Puno', Validators.required],
     observaciones: ['']
   });
 
   tramites = ['Duplicado', 'Revalidación'];
+  estados = ['EN PROCESO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO'];
   categorias = ['AI', 'AIIA', 'AIIB', 'AIIIC'];
   lugares = ['Puno', 'Juliaca'];
 
@@ -67,8 +70,10 @@ export class RegistroComponent {
       // Extract raw values ensuring types
       const payload: ExpedienteCreate = {
         operador: currentUser.id,
+        dni_solicitante: formValue.dni_solicitante!.trim(),
         apellidos_nombres: formValue.apellidos_nombres!.trim().toUpperCase(),
         tramite: formValue.tramite!,
+        estado: formValue.estado!,
         categoria: formValue.categoria!,
         lugar_entrega: formValue.lugar_entrega!,
         observaciones: formValue.observaciones || '',
@@ -85,6 +90,7 @@ export class RegistroComponent {
       // Clear the form and set default selections back
       this.form.reset({
         tramite: 'Duplicado',
+        estado: 'EN PROCESO',
         categoria: 'AI',
         lugar_entrega: 'Puno',
         observaciones: ''
