@@ -1,8 +1,9 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, ViewChild, computed } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { ExpedienteService } from '../../core/services/expediente.service';
 import { RecordModel } from 'pocketbase';
 import { SelectionModel } from '@angular/cdk/collections';
+import { AuthService } from '../../core/services/auth.service';
 
 import { MatTableModule } from '@angular/material/table';
 import { MatCardModule } from '@angular/material/card';
@@ -11,8 +12,15 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { ExpedienteFormModal } from '../../mis-expedientes/mis-expedientes';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule, MAT_DATE_LOCALE } from '@angular/material/core';
+import { MatInputModule } from '@angular/material/input';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { FormsModule } from '@angular/forms';
 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -29,6 +37,7 @@ export interface ColumnDef {
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     MatTableModule,
     MatCardModule,
     MatButtonModule,
@@ -37,20 +46,47 @@ export interface ColumnDef {
     MatDividerModule,
     MatCheckboxModule,
     MatTooltipModule,
-    MatSnackBarModule
+    MatSnackBarModule,
+    MatDialogModule,
+    MatDatepickerModule,
+    MatNativeDateModule,
+    MatFormFieldModule,
+    MatInputModule,
+    FormsModule
   ],
-  providers: [DatePipe],
+  providers: [
+    DatePipe,
+    { provide: MAT_DATE_LOCALE, useValue: 'es-PE' }
+  ],
   templateUrl: './diario.component.html',
   styleUrl: './diario.component.scss'
 })
 export class DiarioComponent implements OnInit {
   private expedienteService = inject(ExpedienteService);
+  private authService = inject(AuthService);
   private datePipe = inject(DatePipe);
   private snackBar = inject(MatSnackBar);
+  private dialog = inject(MatDialog);
 
   records = signal<RecordModel[]>([]);
   isLoading = signal<boolean>(true);
   currentDate = new Date();
+  
+  searchTerm = signal('');
+  filteredRecords = computed(() => {
+    const term = this.searchTerm().toLowerCase();
+    if (!term) return this.records();
+    return this.records().filter(r => 
+      (r['dni_solicitante'] || '').includes(term) ||
+      (r['apellidos_nombres']?.toLowerCase() || '').includes(term) ||
+      (r['tramite']?.toLowerCase() || '').includes(term) ||
+      (r['estado']?.toLowerCase() || '').includes(term) ||
+      (r['categoria']?.toLowerCase() || '').includes(term) ||
+      (r['lugar_entrega']?.toLowerCase() || '').includes(term) ||
+      (r['observaciones']?.toLowerCase() || '').includes(term) ||
+      (r.expand?.['operador']?.nombre?.toLowerCase() || '').includes(term)
+    );
+  });
 
   // ── Column configuration ──────────────────────────────────────
   readonly STORAGE_KEY = 'diario_columns_v1';
@@ -81,7 +117,7 @@ export class DiarioComponent implements OnInit {
   }
 
   get dataToExport(): RecordModel[] {
-    return this.selection.hasValue() ? this.selection.selected : this.records();
+    return this.selection.hasValue() ? this.selection.selected : this.filteredRecords();
   }
 
   get exportLabel(): string {
@@ -92,15 +128,17 @@ export class DiarioComponent implements OnInit {
   }
 
   isAllSelected(): boolean {
-    return this.selection.selected.length === this.records().length;
+    const numSelected = this.selection.selected.length;
+    const numRows = this.filteredRecords().length;
+    return numSelected === numRows;
   }
 
   toggleAllRows() {
     if (this.isAllSelected()) {
       this.selection.clear();
-    } else {
-      this.selection.select(...this.records());
+      return;
     }
+    this.selection.select(...this.filteredRecords());
   }
 
   toggleColumn(col: ColumnDef) {
@@ -139,6 +177,12 @@ export class DiarioComponent implements OnInit {
 
   // ── Data ──────────────────────────────────────────────────────
   async ngOnInit() {
+    const user = this.authService.currentUser();
+    if (user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil'])) {
+      this.allColumns.splice(1, 0, { key: 'operador_nombre', label: 'Operador', visible: true });
+      this.allColumns.push({ key: 'acciones', label: 'Acciones', visible: true });
+    }
+
     this.loadColumnConfig();
     await this.loadData();
   }
@@ -157,17 +201,35 @@ export class DiarioComponent implements OnInit {
     }
   }
 
+  editRecord(record: RecordModel) {
+    const ref = this.dialog.open(ExpedienteFormModal, {
+      width: '90vw',
+      maxWidth: '920px',
+      disableClose: true,
+      data: record
+    });
+    ref.afterClosed().subscribe(saved => { 
+      if (saved) this.loadData(); 
+    });
+  }
+
   // ── Export ────────────────────────────────────────────────────
   exportToExcel() {
-    const rows = this.dataToExport.map(r => ({
-      'DNI Solicitante': r['dni_solicitante'] || 'N/A',
-      'Apellidos y Nombres': r['apellidos_nombres'],
-      Trámite: r['tramite'],
-      Estado: r['estado'] || 'EN PROCESO',
-      Categoría: r['categoria'],
-      'Lugar de Entrega': r['lugar_entrega'],
-      Observaciones: r['observaciones'] || ''
-    }));
+    const user = this.authService.currentUser();
+    const isSup = user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
+
+    const rows = this.dataToExport.map(r => {
+      const row: any = { 'DNI Solicitante': r['dni_solicitante'] || 'N/A' };
+      if (isSup) row['Operador'] = r.expand?.['operador']?.nombre || 'Desconocido';
+      
+      row['Apellidos y Nombres'] = r['apellidos_nombres'];
+      row['Trámite'] = r['tramite'];
+      row['Estado'] = r['estado'] || 'EN PROCESO';
+      row['Categoría'] = r['categoria'];
+      row['Lugar de Entrega'] = r['lugar_entrega'];
+      row['Observaciones'] = r['observaciones'] || '';
+      return row;
+    });
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -176,6 +238,9 @@ export class DiarioComponent implements OnInit {
   }
 
   exportToPDF() {
+    const user = this.authService.currentUser();
+    const isSup = user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
+
     const doc = new jsPDF({ orientation: 'landscape' });
     const date = this.datePipe.transform(this.currentDate, 'dd/MM/yyyy');
     const total = this.dataToExport.length;
@@ -184,18 +249,21 @@ export class DiarioComponent implements OnInit {
     doc.setFontSize(10);
     doc.text(`Total de expedientes: ${total}`, 14, 22);
 
+    const head = isSup
+      ? [['DNI Solic.', 'Operador', 'Solicitante', 'Trámite', 'Estado', 'Categ.', 'Lugar', 'Observaciones']]
+      : [['DNI Solic.', 'Solicitante', 'Trámite', 'Estado', 'Categ.', 'Lugar', 'Observaciones']];
+
+    const body = this.dataToExport.map(r => {
+      const row = [r['dni_solicitante'] || 'N/A'];
+      if (isSup) row.push(r.expand?.['operador']?.nombre || 'Desconocido');
+      row.push(r['apellidos_nombres'], r['tramite'], r['estado'] || 'EN PROCESO', r['categoria'], r['lugar_entrega'], r['observaciones'] || '');
+      return row;
+    });
+
     autoTable(doc, {
       startY: 28,
-      head: [['DNI Solic.', 'Solicitante', 'Trámite', 'Estado', 'Categ.', 'Lugar', 'Observaciones']],
-      body: this.dataToExport.map(r => [
-        r['dni_solicitante'] || 'N/A',
-        r['apellidos_nombres'],
-        r['tramite'],
-        r['estado'] || 'EN PROCESO',
-        r['categoria'],
-        r['lugar_entrega'],
-        r['observaciones'] || ''
-      ]),
+      head: head,
+      body: body,
       headStyles: { fillColor: [10, 61, 98] },
       styles: { fontSize: 8 },
       alternateRowStyles: { fillColor: [244, 247, 246] }

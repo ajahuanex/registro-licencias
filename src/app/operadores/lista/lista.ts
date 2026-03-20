@@ -1,7 +1,8 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnInit, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Title } from '@angular/platform-browser';
 import { OperadorService } from '../../core/services/operador.service';
+import { AuthService } from '../../core/services/auth.service';
 import { RecordModel } from 'pocketbase';
 import { ModalOperador } from '../modal-operador/modal-operador';
 
@@ -10,7 +11,10 @@ import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { MatInputModule } from '@angular/material/input';
+import { MatFormFieldModule } from '@angular/material/form-field';
 
 @Component({
   selector: 'app-lista',
@@ -22,21 +26,52 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
     MatButtonModule,
     MatIconModule,
     MatDialogModule,
-    MatSnackBarModule
+    MatTooltipModule,
+    MatSnackBarModule,
+    MatInputModule,
+    MatFormFieldModule
   ],
   templateUrl: './lista.html',
   styleUrl: './lista.scss'
 })
 export class Lista implements OnInit {
   private operadorService = inject(OperadorService);
+  private authService = inject(AuthService);
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
   private titleService = inject(Title);
 
   operadores = signal<RecordModel[]>([]);
+  searchTerm = signal<string>('');
+  filteredOperadores = computed(() => {
+    const term = this.searchTerm().toLowerCase();
+    if (!term) return this.operadores();
+    return this.operadores().filter(op => 
+       (op['nombre']?.toLowerCase() || '').includes(term) || 
+       (op['dni'] || '').includes(term) || 
+       (op['email']?.toLowerCase() || '').includes(term) ||
+       (op['perfil']?.toLowerCase() || '').includes(term)
+    );
+  });
+  
   isLoading = signal<boolean>(true);
   
-  displayedColumns: string[] = ['dni', 'nombre', 'perfil', 'email', 'acciones'];
+  displayedColumns: string[] = ['dni', 'nombre', 'perfil', 'sede', 'email', 'acciones'];
+
+  isOti() {
+    const p = this.authService.currentUser()?.['perfil'];
+    return p === 'OTI' || p === 'ADMINISTRADOR';
+  }
+
+  isCurrentUser(id: string) {
+    return this.authService.currentUser()?.id === id;
+  }
+
+  actAs(operador: RecordModel) {
+    if (confirm(`¿Estás seguro de que quieres actuar como ${operador['nombre']}?`)) {
+      this.authService.impersonate(operador);
+    }
+  }
 
   async ngOnInit() {
     this.titleService.setTitle('Gestión de Operadores | DRTC Puno');

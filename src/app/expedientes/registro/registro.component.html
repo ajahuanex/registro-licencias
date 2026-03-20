@@ -82,10 +82,12 @@
         </div>
 
         <!-- Observaciones -->
-        <mat-form-field appearance="outline" class="full-width col-span-2">
-          <mat-label>Observaciones (Opcional)</mat-label>
-          <textarea matInput formControlName="observaciones" rows="3" placeholder="Añadir notas o comentarios sobre el expediente..."></textarea>
-          <mat-icon matPrefix>notes</mat-icon>
+        <mat-form-field appearance="outline" class="full-width">
+          <mat-label>Observaciones</mat-label>
+          <textarea matInput formControlName="observaciones" rows="3" placeholder="Si el estado es OBSERVADO, ingrese el motivo"></textarea>
+          @if(form.get('observaciones')?.hasError('required')) {
+            <mat-error>El motivo de la observación es <strong>obligatorio</strong>.</mat-error>
+          }
         </mat-form-field>
 
         <!-- Actions -->

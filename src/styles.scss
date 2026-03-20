@@ -29,6 +29,16 @@ html, body {
   font-family: 'Roboto', "Helvetica Neue", sans-serif;
   background-color: #f8fafc;
   color: #334155;
+  text-transform: uppercase;
+}
+
+/* Evitar que los íconos de texto se rompan con text-transform */
+.mat-icon {
+  text-transform: none !important;
+}
+
+input, select, textarea, .mat-mdc-input-element {
+  text-transform: uppercase !important;
 }
 
 /* Dark Theme Overrides */

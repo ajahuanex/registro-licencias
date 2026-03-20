@@ -4,8 +4,18 @@
   <div class="header-actions">
     <div class="titles">
       <h1>Mis Expedientes</h1>
-      <p>Expedientes registrados por ti hoy · {{ currentDate | date:'dd/MM/yyyy' }}</p>
+      <p>Expedientes correspondientes al {{ currentDate | date:'dd/MM/yyyy' }}</p>
     </div>
+
+    <div class="date-picker-wrapper no-print" style="margin-right: auto; margin-left: 2rem;">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Fecha de Consulta</mat-label>
+        <input matInput [matDatepicker]="picker" [(ngModel)]="currentDate" (dateChange)="loadData()">
+        <mat-datepicker-toggle matIconSuffix [for]="picker"></mat-datepicker-toggle>
+        <mat-datepicker #picker></mat-datepicker>
+      </mat-form-field>
+    </div>
+
     <div class="actions no-print">
       <button mat-icon-button (click)="loadData()" matTooltip="Actualizar">
         <mat-icon [class.rolling]="isLoading()">sync</mat-icon>
@@ -23,9 +33,15 @@
     </div>
   </div>
 
-  <!-- Stat Info -->
-  <div class="stat-bar">
+  <!-- Stat Info and Search -->
+  <div class="stat-bar" style="display: flex; gap: 1rem; align-items: center; justify-content: space-between;">
     <span><mat-icon>assignment</mat-icon> Total del día: <strong>{{ totalRegistros }}</strong></span>
+    
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" style="width: 300px;" class="no-print">
+      <mat-label>Buscar expedientes...</mat-label>
+      <input matInput (keyup)="applyFilter($event)" placeholder="Ej. Juan Perez, 7012...">
+      <mat-icon matPrefix>search</mat-icon>
+    </mat-form-field>
   </div>
 
   <!-- Table Card -->

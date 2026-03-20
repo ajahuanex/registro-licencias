@@ -7,6 +7,7 @@ export interface OperadorData {
   nombre: string;
   email: string;
   perfil: string;
+  sede?: string;
   password?: string;
   passwordConfirm?: string;
 }

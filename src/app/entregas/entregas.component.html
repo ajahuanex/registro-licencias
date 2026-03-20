@@ -1,0 +1,104 @@
+<div class="page-wrapper fade-in">
+  <div class="header-actions">
+    <div class="titles">
+      <h1>Mesa de Entregas</h1>
+      <p>Licencias listas para entregar al ciudadano (Estado: ATENDIDO)</p>
+    </div>
+
+    <div class="location-filter">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Sede de Entrega</mat-label>
+        <mat-select [ngModel]="selectedLugar()" (ngModelChange)="selectedLugar.set($event); onLugarChange()">
+          @for (lugar of lugares; track lugar) {
+            <mat-option [value]="lugar">{{ lugar }}</mat-option>
+          }
+        </mat-select>
+        <mat-icon matPrefix>location_on</mat-icon>
+      </mat-form-field>
+    </div>
+
+    <div class="actions">
+      <!-- Search Form -->
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" style="width: 250px;" class="no-print fade-in">
+        <mat-label>Buscador (DNI, Nombre)</mat-label>
+        <input matInput (input)="searchTerm.set($any($event.target).value)" placeholder="Buscar entrega...">
+        <mat-icon matPrefix>search</mat-icon>
+      </mat-form-field>
+
+      <button mat-icon-button (click)="loadData()" matTooltip="Actualizar">
+        <mat-icon [class.rolling]="isLoading()">sync</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <mat-card class="mat-elevation-z3">
+    @if (isLoading()) {
+      <div class="loading-overlay">
+        <div class="spinner"></div>
+        <span>Cargando licencias pendientes...</span>
+      </div>
+    } @else {
+      <div class="table-container">
+        <table mat-table [dataSource]="filteredRecords()" class="full-width-table">
+          <!-- DNI -->
+          <ng-container matColumnDef="dni_solicitante">
+            <th mat-header-cell *matHeaderCellDef> DNI Solicitante </th>
+            <td mat-cell *matCellDef="let element"> <span class="badge">{{element.dni_solicitante}}</span> </td>
+          </ng-container>
+
+          <!-- Solicitante -->
+          <ng-container matColumnDef="apellidos_nombres">
+            <th mat-header-cell *matHeaderCellDef> Solicitante </th>
+            <td mat-cell *matCellDef="let element"> <strong>{{element.apellidos_nombres}}</strong> </td>
+          </ng-container>
+
+          <!-- Trámite -->
+          <ng-container matColumnDef="tramite">
+            <th mat-header-cell *matHeaderCellDef> Trámite </th>
+            <td mat-cell *matCellDef="let element">
+              <span class="status-chip">{{element.tramite}}</span>
+            </td>
+          </ng-container>
+
+          <!-- Categoría -->
+          <ng-container matColumnDef="categoria">
+            <th mat-header-cell *matHeaderCellDef> Categoría </th>
+            <td mat-cell *matCellDef="let element"> <span class="status-chip">{{element.categoria}}</span> </td>
+          </ng-container>
+
+          <!-- Fecha -->
+          <ng-container matColumnDef="fecha">
+            <th mat-header-cell *matHeaderCellDef> Fecha Registro </th>
+            <td mat-cell *matCellDef="let element"> {{element.fecha_registro | date:'dd/MM/yyyy'}} </td>
+          </ng-container>
+
+          <!-- Acciones -->
+          <ng-container matColumnDef="acciones">
+            <th mat-header-cell *matHeaderCellDef class="text-right"> Acción </th>
+            <td mat-cell *matCellDef="let element" class="text-right">
+              @if (canDeliver()) {
+                <button mat-flat-button color="primary" (click)="marcarEntregado(element.id)">
+                  <mat-icon>check_circle</mat-icon> Entregar
+                </button>
+              } @else {
+                <span class="readonly-badge" matTooltip="Modo de solo lectura. No perteneces a esta sede.">
+                  Solo Lectura
+                </span>
+              }
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="table-row-hover"></tr>
+          
+          <tr class="mat-row" *matNoDataRow>
+            <td class="mat-cell empty-cell" [attr.colspan]="displayedColumns.length">
+              <mat-icon>check_circle_outline</mat-icon>
+              <p>No hay licencias pendientes de entrega en esta sede.</p>
+            </td>
+          </tr>
+        </table>
+      </div>
+    }
+  </mat-card>
+</div>

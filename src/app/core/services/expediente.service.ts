@@ -1,5 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { PocketbaseService } from './pocketbase.service';
+import { AuthService } from './auth.service';
 import { RecordModel } from 'pocketbase';
 
 export interface ExpedienteCreate {
@@ -19,7 +20,28 @@ export interface ExpedienteCreate {
 })
 export class ExpedienteService {
   private pbService = inject(PocketbaseService);
+  private authService = inject(AuthService);
   private collectionName = 'expedientes';
+
+  /**
+   * Registra una acción en el historial de expedientes
+   */
+  async logHistory(expedienteId: string, accion: string, detalles: string) {
+    try {
+      const user = this.authService.currentUser();
+      if (!user) return;
+
+      await this.pbService.pb.collection('historial_expedientes').create({
+        expediente: expedienteId,
+        modificado_por: user.id,
+        accion: accion,
+        detalles: detalles,
+        fecha: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error('[HISTORY ERROR] No se pudo guardar el log:', e);
+    }
+  }
 
   /**
    * Registers a new valid dossier while preventing daily duplicates.
@@ -32,7 +54,23 @@ export class ExpedienteService {
     }
 
     // 2. Persist to DB
-    return await this.pbService.pb.collection(this.collectionName).create(data);
+    const record = await this.pbService.pb.collection(this.collectionName).create(data);
+    
+    // 3. Log History
+    await this.logHistory(record.id, 'CREACION', 'Expediente registrado por primera vez.');
+    return record;
+  }
+
+  /**
+   * Updates an existing dossier and logs the change.
+   */
+  async updateExpediente(id: string, data: Partial<ExpedienteCreate>, accionLog: string = 'MODIFICACION'): Promise<RecordModel> {
+    const record = await this.pbService.pb.collection(this.collectionName).update(id, data);
+    
+    // Build detail string dynamically if needed
+    const detalles = `Estado actualizado a ${data.estado}. Trámite: ${data.tramite}.`;
+    await this.logHistory(record.id, accionLog, detalles);
+    return record;
   }
 
   /**
@@ -45,7 +83,7 @@ export class ExpedienteService {
       const datePrefix = isoDateString.split('T')[0];
       
       const records = await this.pbService.pb.collection(this.collectionName).getList(1, 1, {
-        filter: `apellidos_nombres = "${apellidosNombres}" && fecha_registro >= "${datePrefix} 00:00:00" && fecha_registro <= "${datePrefix} 23:59:59"`
+        filter: `apellidos_nombres = "${apellidosNombres}" && fecha_registro ~ "${datePrefix}"`
       });
 
       return records.totalItems > 0;
@@ -57,11 +95,38 @@ export class ExpedienteService {
   }
 
   /**
+   * Retrieves all dossiers that are pending delivery (ATENDIDO) for a specific location.
+   */
+  async getPendingDeliveries(lugar: string): Promise<RecordModel[]> {
+    try {
+      return await this.pbService.pb.collection('expedientes').getFullList({
+        filter: `estado = "ATENDIDO" && lugar_entrega = "${lugar}"`,
+        sort: '-fecha_registro'
+      });
+    } catch (error) {
+      console.error('Error fetching pending deliveries:', error);
+      throw error;
+    }
+  }
+
+  async getGlobalHistory(): Promise<RecordModel[]> {
+    try {
+      return await this.pbService.pb.collection('historial_expedientes').getFullList({
+        sort: '-fecha',
+        expand: 'modificado_por,expediente'
+      });
+    } catch (error) {
+      console.error('Error fetching global history:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Retrieves the daily summary for all operators or a specific one.
    */
   async getDailyConsolidated(dateStringYYYYMMDD: string, operadorId?: string): Promise<RecordModel[]> {
      try {
-       let filterStr = `fecha_registro >= "${dateStringYYYYMMDD} 00:00:00" && fecha_registro <= "${dateStringYYYYMMDD} 23:59:59"`;
+       let filterStr = `fecha_registro != ""`; // Fallback to all records to verify connection
        if (operadorId) {
          filterStr += ` && operador = "${operadorId}"`;
        }

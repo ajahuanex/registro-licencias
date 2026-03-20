@@ -47,13 +47,14 @@ export class ModalOperador {
   isLoading = signal<boolean>(false);
   hidePassword = signal<boolean>(true);
 
-  perfiles = ['OTI', 'ADMINISTRADOR', 'SUPERVISOR', 'REGISTRADOR'];
+  perfiles = ['OTI', 'ADMINISTRADOR', 'SUPERVISOR', 'REGISTRADOR', 'ENTREGADOR'];
 
   form = this.fb.group({
     dni: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],
     nombre: ['', [Validators.required, Validators.minLength(3)]],
-    email: ['', [Validators.required, Validators.email]],
+    email: ['', [Validators.email]],
     perfil: ['REGISTRADOR', Validators.required],
+    sede: [''],
     password: ['', [Validators.minLength(8)]],
     passwordConfirm: ['']
   }, { validators: passwordMatchValidator });
@@ -65,7 +66,8 @@ export class ModalOperador {
         dni: data['dni'],
         nombre: data['nombre'],
         email: data['email'],
-        perfil: data['perfil'] || 'REGISTRADOR'
+        perfil: data['perfil'] || 'REGISTRADOR',
+        sede: data['sede'] || ''
       });
       // In edit mode, password is not required.
     } else {
@@ -84,13 +86,26 @@ export class ModalOperador {
     this.isLoading.set(true);
 
     try {
-      const val = this.form.value;
+      const val = this.form.getRawValue();
+
+      // Auto-generar correo si no fue ingresado para satisfacer la validación de Auth de Pocketbase
+      let payloadEmail = val.email;
+      if (!payloadEmail || payloadEmail.trim() === '') {
+        payloadEmail = `${val.dni}@drtc.gob.pe`;
+      }
+
       const payload: Partial<OperadorData> = {
         dni: val.dni!,
         nombre: val.nombre!,
-        email: val.email!,
+        email: payloadEmail, // Use the potentially auto-generated email
         perfil: val.perfil!
       };
+
+      if (val.perfil === 'ENTREGADOR' && val.sede) {
+        payload.sede = val.sede;
+      } else {
+        payload.sede = '';
+      }
 
       if (val.password) {
         payload.password = val.password;

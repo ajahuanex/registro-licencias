@@ -49,9 +49,21 @@ export class RegistroComponent {
   });
 
   tramites = ['Duplicado', 'Revalidación'];
-  estados = ['EN PROCESO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO'];
+  estados = ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'ENTREGADO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'];
   categorias = ['AI', 'AIIA', 'AIIB', 'AIIIC'];
   lugares = ['Puno', 'Juliaca'];
+
+  constructor() {
+    this.form.get('estado')?.valueChanges.subscribe(estado => {
+      const obsControl = this.form.get('observaciones');
+      if (estado === 'OBSERVADO') {
+        obsControl?.setValidators([Validators.required, Validators.minLength(5)]);
+      } else {
+        obsControl?.clearValidators();
+      }
+      obsControl?.updateValueAndValidity();
+    });
+  }
 
   async onSubmit() {
     if (this.form.invalid) {

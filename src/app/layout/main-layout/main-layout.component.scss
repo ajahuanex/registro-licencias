@@ -100,3 +100,45 @@ mat-nav-list {
   overflow-y: auto;
   box-sizing: border-box;
 }
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.impersonation-banner {
+  background-color: #d32f2f;
+  color: white;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  z-index: 1000;
+  position: relative;
+  
+  mat-icon {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+  }
+  
+  span {
+    flex: 1;
+    font-size: 0.95rem;
+    letter-spacing: 0.5px;
+  }
+  
+  button {
+    border-color: rgba(255, 255, 255, 0.5);
+    color: white;
+    background: rgba(0, 0, 0, 0.1);
+    
+    &:hover {
+      background: rgba(0, 0, 0, 0.2);
+    }
+  }
+}

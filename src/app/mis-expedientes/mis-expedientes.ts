@@ -1,6 +1,6 @@
 import { Component, inject, OnInit, signal, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
 import { Title } from '@angular/platform-browser';
 import { RecordModel } from 'pocketbase';
 import { ExpedienteService, ExpedienteCreate } from '../core/services/expediente.service';
@@ -19,6 +19,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule, MAT_DATE_LOCALE } from '@angular/material/core';
 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -35,7 +37,9 @@ import { Component as CompDeco, Inject } from '@angular/core';
     MatSelectModule, MatButtonModule, MatIconModule, MatDialogModule
   ],
   template: `
-<h2 mat-dialog-title>{{ data?.id ? 'Editar Expediente' : 'Nuevo Expediente' }}</h2>
+<h2 mat-dialog-title>
+  {{ data?.id ? (isReadOnly() ? 'Detalles del Expediente (Bloqueado)' : 'Editar Expediente') : 'Nuevo Expediente' }}
+</h2>
 <mat-dialog-content>
   <form [formGroup]="form" class="form-grid">
     <mat-form-field appearance="outline" class="two-col"><mat-label>Apellidos y Nombres Completos</mat-label>
@@ -67,18 +71,26 @@ import { Component as CompDeco, Inject } from '@angular/core';
         @for(e of estados; track e){<mat-option [value]="e">{{e}}</mat-option>}
       </mat-select><mat-icon matPrefix>pending_actions</mat-icon>
     </mat-form-field>
-    <mat-form-field appearance="outline" class="full-row">
-      <mat-label>Observaciones (Opcional)</mat-label>
-      <textarea matInput formControlName="observaciones" rows="3"></textarea>
+    <mat-form-field appearance="outline" class="two-col">
+      <mat-label>Observaciones</mat-label>
+      <textarea matInput formControlName="observaciones" rows="3" placeholder="Si el estado es OBSERVADO, ingrese el motivo aquí"></textarea>
       <mat-icon matPrefix>notes</mat-icon>
+      @if(form.get('observaciones')?.hasError('required') && form.get('observaciones')?.touched) {
+        <mat-error>El motivo de la observación es <strong>obligatorio</strong>.</mat-error>
+      }
+      @if(form.get('observaciones')?.hasError('minlength') && form.get('observaciones')?.touched) {
+        <mat-error>Mínimo 5 caracteres permitidos.</mat-error>
+      }
     </mat-form-field>
   </form>
 </mat-dialog-content>
 <mat-dialog-actions align="end">
-  <button mat-button mat-dialog-close>Cancelar</button>
-  <button mat-flat-button color="primary" [disabled]="form.invalid || saving()" (click)="onSubmit()">
-    {{ saving() ? 'Guardando...' : (data?.id ? 'Guardar Cambios' : 'Registrar') }}
-  </button>
+  <button mat-button mat-dialog-close>{{ isReadOnly() ? 'Cerrar' : 'Cancelar' }}</button>
+  @if(!isReadOnly()){
+    <button mat-flat-button color="primary" [disabled]="form.invalid || saving()" (click)="onSubmit()">
+      {{ saving() ? 'Guardando...' : (data?.id ? 'Guardar Cambios' : 'Registrar') }}
+    </button>
+  }
 </mat-dialog-actions>
   `,
   styles: [`
@@ -96,10 +108,11 @@ import { Component as CompDeco, Inject } from '@angular/core';
 })
 export class ExpedienteFormModal {
   tramites = ['Duplicado', 'Revalidación'];
-  estados = ['EN PROCESO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'];
+  estados = ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'ENTREGADO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'];
   categorias = ['AI', 'AIIA', 'AIIB', 'AIIIC'];
   lugares = ['Puno', 'Juliaca'];
   saving = signal(false);
+  isReadOnly = signal(false);
 
   form = inject(FormBuilder).group({
     dni_solicitante: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],
@@ -113,6 +126,7 @@ export class ExpedienteFormModal {
 
   private pbService = inject(PocketbaseService);
   private authService = inject(AuthService);
+  private expedienteService = inject(ExpedienteService);
   private snackBar = inject(MatSnackBar);
   dialogRef = inject(MatDialogRef<ExpedienteFormModal>);
 
@@ -127,7 +141,24 @@ export class ExpedienteFormModal {
         lugar_entrega: data['lugar_entrega'],
         observaciones: data['observaciones'] || ''
       });
+
+      const user = this.authService.currentUser();
+      const isPrivileged = user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
+      if (!isPrivileged && data['estado'] !== 'EN PROCESO') {
+        this.isReadOnly.set(true);
+        this.form.disable();
+      }
     }
+
+    this.form.get('estado')?.valueChanges.subscribe(estado => {
+      const obsControl = this.form.get('observaciones');
+      if (estado === 'OBSERVADO') {
+        obsControl?.setValidators([Validators.required, Validators.minLength(5)]);
+      } else {
+        obsControl?.clearValidators();
+      }
+      obsControl?.updateValueAndValidity();
+    });
   }
 
   async onSubmit() {
@@ -146,13 +177,13 @@ export class ExpedienteFormModal {
       };
 
       if (this.data?.id) {
-        await this.pbService.pb.collection('expedientes').update(this.data.id, payload);
+        await this.expedienteService.updateExpediente(this.data.id, payload, 'EDICION_FORMULARIO');
         this.snackBar.open('Expediente actualizado', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
       } else {
         const user = this.authService.currentUser();
         payload.operador = user!.id;
         payload.fecha_registro = new Date().toISOString();
-        await this.pbService.pb.collection('expedientes').create(payload);
+        await this.expedienteService.registerExpediente(payload);
         this.snackBar.open('Expediente registrado exitosamente', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
       }
       this.dialogRef.close(true);
@@ -169,9 +200,13 @@ export class ExpedienteFormModal {
   selector: 'app-mis-expedientes',
   standalone: true,
   imports: [
-    CommonModule, MatTableModule, MatPaginatorModule, MatSortModule,
+    CommonModule, FormsModule, MatTableModule, MatPaginatorModule, MatSortModule,
     MatCardModule, MatButtonModule, MatIconModule, MatDialogModule,
-    MatSnackBarModule, MatTooltipModule
+    MatSnackBarModule, MatTooltipModule, MatDatepickerModule, MatNativeDateModule,
+    MatFormFieldModule, MatInputModule
+  ],
+  providers: [
+    { provide: MAT_DATE_LOCALE, useValue: 'es-PE' }
   ],
   templateUrl: './mis-expedientes.html',
   styleUrl: './mis-expedientes.scss'
@@ -203,7 +238,7 @@ export class MisExpedientes implements OnInit {
     try {
       const user = this.authService.currentUser();
       if (!user) return;
-      const dateString = new Date().toISOString().split('T')[0];
+      const dateString = this.currentDate.toISOString().split('T')[0];
       const records = await this.expedienteService.getDailyConsolidated(dateString, user.id);
       this.dataSource.data = records;
       setTimeout(() => {
@@ -214,6 +249,15 @@ export class MisExpedientes implements OnInit {
       this.snackBar.open('Error al cargar expedientes: ' + e.message, 'Cerrar', { duration: 4000 });
     } finally {
       this.isLoading.set(false);
+    }
+  }
+
+  applyFilter(event: Event) {
+    const filterValue = (event.target as HTMLInputElement).value;
+    this.dataSource.filter = filterValue.trim().toLowerCase();
+
+    if (this.dataSource.paginator) {
+      this.dataSource.paginator.firstPage();
     }
   }
 

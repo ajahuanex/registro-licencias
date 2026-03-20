@@ -61,4 +61,8 @@ export class MainLayoutComponent {
   onLogout() {
     this.authService.logout();
   }
+
+  stopImpersonating() {
+    this.authService.stopImpersonating();
+  }
 }

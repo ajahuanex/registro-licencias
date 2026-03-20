@@ -36,6 +36,20 @@ export const routes: Routes = [
       {
         path: 'reportes/diario',
         loadComponent: () => import('./reportes/diario/diario.component').then(m => m.DiarioComponent)
+      },
+      {
+        path: 'entregas',
+        loadComponent: () => import('./entregas/entregas.component').then(m => m.EntregasComponent)
+      },
+      // Configuraciones OTI (Module added dynamically)
+      {
+        path: 'configuraciones',
+        loadComponent: () => import('./configuraciones/configuraciones.component').then(m => m.ConfiguracionesComponent)
+      },
+      // Auditoría (Module added dynamically)
+      {
+        path: 'auditoria',
+        loadComponent: () => import('./auditoria/auditoria.component').then(m => m.AuditoriaComponent)
       }
     ]
   },
