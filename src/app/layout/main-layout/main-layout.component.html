@@ -40,6 +40,14 @@
             <mat-icon matListItemIcon>summarize</mat-icon>
             <span matListItemTitle>Reporte Diario</span>
           </a>
+          <a mat-list-item routerLink="/reporte-mensual" routerLinkActive="active-link">
+            <mat-icon matListItemIcon>bar_chart</mat-icon>
+            <span matListItemTitle>Reporte Mensual</span>
+          </a>
+          <a mat-list-item routerLink="/historial-reportes" routerLinkActive="active-link">
+            <mat-icon matListItemIcon>verified</mat-icon>
+            <span matListItemTitle>Historial de Reportes</span>
+          </a>
         }
 
         @if (user?.['perfil'] === 'OTI' || user?.['perfil'] === 'ADMINISTRADOR') {

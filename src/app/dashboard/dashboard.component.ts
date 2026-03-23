@@ -44,11 +44,16 @@ export class DashboardComponent implements OnInit {
     this.isLoading.set(true);
     try {
       const user = this.authService.currentUser();
-      const dateString = new Date().toISOString().split('T')[0];
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
       
       let records: RecordModel[] = [];
-      if (user?.['perfil'] === 'REGISTRADOR' || user?.['perfil'] === 'SUPERVISOR') {
-        records = await this.expedienteService.getDailyConsolidated(dateString, user.id);
+      const isPrivileged = user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
+      if (!isPrivileged) {
+        records = await this.expedienteService.getDailyConsolidated(dateString, user!.id);
       } else {
         records = await this.expedienteService.getDailyConsolidated(dateString);
       }

@@ -42,7 +42,7 @@ import { Component as CompDeco, Inject } from '@angular/core';
 </h2>
 <mat-dialog-content>
   <form [formGroup]="form" class="form-grid">
-    <mat-form-field appearance="outline" class="two-col"><mat-label>Apellidos y Nombres Completos</mat-label>
+    <mat-form-field appearance="outline" class="two-col input-upper"><mat-label>Apellidos y Nombres Completos</mat-label>
       <input matInput formControlName="apellidos_nombres" placeholder="APELLIDO NOMBRE">
       <mat-icon matPrefix>person</mat-icon>
     </mat-form-field>
@@ -51,14 +51,20 @@ import { Component as CompDeco, Inject } from '@angular/core';
       <mat-icon matPrefix>badge</mat-icon>
       @if(form.controls.dni_solicitante.hasError('pattern')&&form.controls.dni_solicitante.touched){<mat-error>Debe tener 8 dígitos</mat-error>}
     </mat-form-field>
+    <mat-form-field appearance="outline"><mat-label>Celular (opcional)</mat-label>
+      <input matInput formControlName="celular" maxlength="12" placeholder="9XXXXXXXX">
+      <mat-icon matPrefix>phone</mat-icon>
+    </mat-form-field>
     <mat-form-field appearance="outline"><mat-label>Tipo de Trámite</mat-label>
-      <mat-select formControlName="tramite">
+      <mat-select formControlName="tramite" (selectionChange)="onTramiteChange()">
         @for(t of tramites; track t){<mat-option [value]="t">{{t}}</mat-option>}
       </mat-select><mat-icon matPrefix>description</mat-icon>
     </mat-form-field>
     <mat-form-field appearance="outline"><mat-label>Categoría</mat-label>
       <mat-select formControlName="categoria">
-        @for(c of categorias; track c){<mat-option [value]="c">{{c}}</mat-option>}
+        @for(c of categoriasDisponibles; track c.value){
+          <mat-option [value]="c.value">{{c.label}}</mat-option>
+        }
       </mat-select><mat-icon matPrefix>drive_eta</mat-icon>
     </mat-form-field>
     <mat-form-field appearance="outline"><mat-label>Lugar de Entrega</mat-label>
@@ -107,34 +113,97 @@ import { Component as CompDeco, Inject } from '@angular/core';
   `]
 })
 export class ExpedienteFormModal {
-  tramites = ['Duplicado', 'Revalidación'];
-  estados = ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'ENTREGADO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'];
-  categorias = ['AI', 'AIIA', 'AIIB', 'AIIIC'];
+  // Trámites según normativa MTC
+  tramites = ['Obtención', 'Revalidación', 'Duplicado', 'Recategorización'];
+
+  // Categorías completas MTC
+  private static readonly TODAS_CATEGORIAS = [
+    // Clase A — ordinarias
+    { value: 'A-I',    label: 'A-I   — Vehículos particulares' },
+    { value: 'A-IIa',  label: 'A-IIa — Taxis / transporte público menor' },
+    { value: 'A-IIb',  label: 'A-IIb — Microbús / Minibús' },
+    { value: 'A-IIIa', label: 'A-IIIa— Ómnibus (>6 ton)' },
+    { value: 'A-IIIb', label: 'A-IIIb— Camión / Grúa / Remolque' },
+    { value: 'A-IIIc', label: 'A-IIIc— Combinada A-I + A-II + A-III' },
+    // Clase A — Especial (solo Obtención/Revalidación)
+    { value: 'A-IV',   label: 'A-IV  — Especial Mat. Peligrosos' },
+    // Clase B — menores
+    { value: 'B-IIa',  label: 'B-IIa — Bicimotos de carga/pasajeros' },
+    { value: 'B-IIb',  label: 'B-IIb — Motocicletas' },
+    { value: 'B-IIc',  label: 'B-IIc — Mototaxi / Trimoto' },
+  ];
+
   lugares = ['Puno', 'Juliaca'];
   saving = signal(false);
   isReadOnly = signal(false);
 
+  private static readonly ESTADOS_POR_PERFIL: Record<string, string[]> = {
+    // Registra expediente — solo puede marcar problemas
+    REGISTRADOR:      ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'],
+    OPERADOR:         ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'],
+    // Supervisor de Impresión — imprime la licencia física
+    SUP_IMPRESION:    ['IMPRESO', 'OBSERVADO', 'RECHAZADO'],
+    // Supervisor de Control de Calidad — verifica impresión y datos; aprueba para entrega
+    SUP_CALIDAD:      ['ATENDIDO', 'OBSERVADO', 'RECHAZADO'],
+    // Supervisor genérico — acceso amplio
+    SUPERVISOR:       ['EN PROCESO', 'IMPRESO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'],
+    // Entregador — solo confirma entrega física
+    ENTREGADOR:       ['ENTREGADO'],
+    // Administrador — control total
+    ADMINISTRADOR:    ['EN PROCESO', 'IMPRESO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'],
+    // OTI — control total + configuraciones globales del sistema
+    OTI:              ['EN PROCESO', 'IMPRESO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'],
+  };
+
+  private authServiceModal = inject(AuthService);
+  private expedienteService = inject(ExpedienteService);
+  private pbService = inject(PocketbaseService);
+  private snackBar = inject(MatSnackBar);
+  dialogRef = inject(MatDialogRef<ExpedienteFormModal>);
+
+  get estados(): string[] {
+    const perfil = this.authServiceModal.currentUser()?.['perfil'] ?? '';
+    return ExpedienteFormModal.ESTADOS_POR_PERFIL[perfil]
+      ?? ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'];
+  }
+
+  /** Categorías disponibles según el trámite seleccionado */
+  get categoriasDisponibles() {
+    const tramite = this.form.get('tramite')?.value ?? '';
+    // DUPLICADO y RECATEGORIZACIÓN→ todas las categorías ordinarias (no A-IV)
+    // OBTENCIÓN y REVALIDACIÓN → todas incluidas A-IV
+    if (tramite === 'Duplicado' || tramite === 'Recategorización') {
+      return ExpedienteFormModal.TODAS_CATEGORIAS.filter(c => c.value !== 'A-IV');
+    }
+    return ExpedienteFormModal.TODAS_CATEGORIAS;
+  }
+
   form = inject(FormBuilder).group({
     dni_solicitante: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],
     apellidos_nombres: ['', [Validators.required, Validators.minLength(3)]],
-    tramite: ['Duplicado', Validators.required],
+    celular: [''],
+    tramite: ['Obtención', Validators.required],
     estado: ['EN PROCESO', Validators.required],
-    categoria: ['AI', Validators.required],
+    categoria: ['A-I', Validators.required],
     lugar_entrega: ['Puno', Validators.required],
     observaciones: ['']
   });
 
-  private pbService = inject(PocketbaseService);
-  private authService = inject(AuthService);
-  private expedienteService = inject(ExpedienteService);
-  private snackBar = inject(MatSnackBar);
-  dialogRef = inject(MatDialogRef<ExpedienteFormModal>);
+  /** When tramite changes, reset categoria to first valid option */
+  onTramiteChange() {
+    const disponibles = this.categoriasDisponibles;
+    const current = this.form.get('categoria')?.value;
+    if (!disponibles.find(c => c.value === current)) {
+      this.form.get('categoria')?.setValue(disponibles[0]?.value ?? 'A-I');
+    }
+  }
 
   constructor(@Inject(MAT_DIALOG_DATA) public data: RecordModel | null) {
     if (data?.id) {
       this.form.patchValue({
         dni_solicitante: data['dni_solicitante'],
         apellidos_nombres: data['apellidos_nombres'],
+        celular: data['celular'] || '',
         tramite: data['tramite'],
         estado: data['estado'],
         categoria: data['categoria'],
@@ -142,7 +211,7 @@ export class ExpedienteFormModal {
         observaciones: data['observaciones'] || ''
       });
 
-      const user = this.authService.currentUser();
+      const user = this.authServiceModal.currentUser();
       const isPrivileged = user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
       if (!isPrivileged && data['estado'] !== 'EN PROCESO') {
         this.isReadOnly.set(true);
@@ -169,6 +238,7 @@ export class ExpedienteFormModal {
       const payload: any = {
         dni_solicitante: val.dni_solicitante!.trim(),
         apellidos_nombres: val.apellidos_nombres!.trim().toUpperCase(),
+        celular: val.celular?.trim() || '',
         tramite: val.tramite!,
         estado: val.estado!,
         categoria: val.categoria!,
@@ -180,7 +250,7 @@ export class ExpedienteFormModal {
         await this.expedienteService.updateExpediente(this.data.id, payload, 'EDICION_FORMULARIO');
         this.snackBar.open('Expediente actualizado', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
       } else {
-        const user = this.authService.currentUser();
+        const user = this.authServiceModal.currentUser();
         payload.operador = user!.id;
         payload.fecha_registro = new Date().toISOString();
         await this.expedienteService.registerExpediente(payload);
@@ -238,7 +308,12 @@ export class MisExpedientes implements OnInit {
     try {
       const user = this.authService.currentUser();
       if (!user) return;
-      const dateString = this.currentDate.toISOString().split('T')[0];
+      
+      const year = this.currentDate.getFullYear();
+      const month = String(this.currentDate.getMonth() + 1).padStart(2, '0');
+      const day = String(this.currentDate.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
+      
       const records = await this.expedienteService.getDailyConsolidated(dateString, user.id);
       this.dataSource.data = records;
       setTimeout(() => {

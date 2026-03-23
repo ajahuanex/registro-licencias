@@ -19,21 +19,21 @@ import { ExpedienteService } from '../core/services/expediente.service';
 })
 export class AuditoriaComponent implements OnInit {
   private exService = inject(ExpedienteService);
-  
+
   logs = signal<RecordModel[]>([]);
   searchTerm = signal('');
   filteredLogs = computed(() => {
     const term = this.searchTerm().toLowerCase();
     if (!term) return this.logs();
-    return this.logs().filter(log => 
-      (log.expand?.['operador']?.nombre?.toLowerCase() || '').includes(term) ||
-      (log['perfil']?.toLowerCase() || '').includes(term) ||
-      (log.expand?.['expediente']?.dni_solicitante || '').includes(term) ||
+    return this.logs().filter(log =>
+      (log['operador_nombre']?.toLowerCase() || '').includes(term) ||
+      (log['operador_perfil']?.toLowerCase() || '').includes(term) ||
+      (log['expediente_dni']?.toString() || '').includes(term) ||
       (log['accion']?.toLowerCase() || '').includes(term) ||
       (log['detalles']?.toLowerCase() || '').includes(term)
     );
   });
-  displayedColumns = ['fecha', 'operador', 'perfil', 'expediente', 'accion', 'detalles'];
+  displayedColumns = ['fecha', 'operador_nombre', 'operador_perfil', 'expediente_dni', 'accion', 'detalles'];
 
   async ngOnInit() {
     try {

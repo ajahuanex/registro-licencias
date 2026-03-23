@@ -8,6 +8,11 @@ export const routes: Routes = [
     loadComponent: () => import('./auth/login/login.component').then(m => m.LoginComponent)
   },
   {
+    // Public route — no auth required (accessed via QR code scans)
+    path: 'verificar/:id',
+    loadComponent: () => import('./verificar-reporte/verificar-reporte.component').then(m => m.VerificarReporteComponent)
+  },
+  {
     path: '',
     component: MainLayoutComponent,
     canActivate: [authGuard],
@@ -50,6 +55,14 @@ export const routes: Routes = [
       {
         path: 'auditoria',
         loadComponent: () => import('./auditoria/auditoria.component').then(m => m.AuditoriaComponent)
+      },
+      {
+        path: 'historial-reportes',
+        loadComponent: () => import('./historial-reportes/historial-reportes.component').then(m => m.HistorialReportesComponent)
+      },
+      {
+        path: 'reporte-mensual',
+        loadComponent: () => import('./reporte-mensual/reporte-mensual.component').then(m => m.ReporteMensualComponent)
       }
     ]
   },

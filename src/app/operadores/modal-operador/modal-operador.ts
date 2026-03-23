@@ -102,7 +102,7 @@ export class ModalOperador {
       };
 
       if (val.perfil === 'ENTREGADOR' && val.sede) {
-        payload.sede = val.sede;
+        payload.sede = val.sede.toUpperCase();
       } else {
         payload.sede = '';
       }

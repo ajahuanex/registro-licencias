@@ -1,6 +1,7 @@
-import { Component, inject, OnInit, signal, ViewChild, computed } from '@angular/core';
+import { Component, inject, OnInit, signal, ViewChild, computed, TemplateRef } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { ExpedienteService } from '../../core/services/expediente.service';
+import { ReporteService } from '../../core/services/reporte.service';
 import { RecordModel } from 'pocketbase';
 import { SelectionModel } from '@angular/cdk/collections';
 import { AuthService } from '../../core/services/auth.service';
@@ -20,6 +21,7 @@ import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatNativeDateModule, MAT_DATE_LOCALE } from '@angular/material/core';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatSelectModule } from '@angular/material/select';
 import { FormsModule } from '@angular/forms';
 
 import * as XLSX from 'xlsx';
@@ -52,6 +54,7 @@ export interface ColumnDef {
     MatNativeDateModule,
     MatFormFieldModule,
     MatInputModule,
+    MatSelectModule,
     FormsModule
   ],
   providers: [
@@ -67,6 +70,7 @@ export class DiarioComponent implements OnInit {
   private datePipe = inject(DatePipe);
   private snackBar = inject(MatSnackBar);
   private dialog = inject(MatDialog);
+  private reporteService = inject(ReporteService);
 
   records = signal<RecordModel[]>([]);
   isLoading = signal<boolean>(true);
@@ -88,18 +92,34 @@ export class DiarioComponent implements OnInit {
     );
   });
 
+  // ── States per profile ────────────────────────────────────────
+  private static readonly ESTADOS_POR_PERFIL: Record<string, string[]> = {
+    SUPERVISOR:    ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'],
+    ADMINISTRADOR: ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'],
+    OTI:           ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'],
+    ENTREGADOR:    ['ENTREGADO'],
+    OPERADOR:      ['EN PROCESO'],
+  };
+
+  estadosPermitidos = computed(() => {
+    const perfil = this.authService.currentUser()?.['perfil'] ?? '';
+    return DiarioComponent.ESTADOS_POR_PERFIL[perfil]
+        ?? ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'];
+  });
+
+
   // ── Column configuration ──────────────────────────────────────
-  readonly STORAGE_KEY = 'diario_columns_v1';
+  readonly STORAGE_KEY = 'diario_columns_v2';
 
   allColumns: ColumnDef[] = [
     { key: 'select',          label: '☑', visible: true },
-    { key: 'dni_solicitante', label: 'DNI Solicitante', visible: true },
-    { key: 'apellidos_nombres', label: 'Solicitante', visible: true },
+    { key: 'created',         label: 'Fecha/Hora', visible: true },
+    { key: 'solicitante_info', label: 'Solicitante / DNI / Cat', visible: true },
     { key: 'tramite',         label: 'Trámite', visible: true },
-    { key: 'estado',          label: 'Estado', visible: true },
-    { key: 'categoria',       label: 'Categoría', visible: true },
+    { key: 'estado',          label: 'Estado (Etiqueta)', visible: true },
+    { key: 'cambio_estado',   label: 'Cambiar Estado', visible: true },
     { key: 'lugar',           label: 'Lugar Entrega', visible: true },
-    { key: 'observaciones',   label: 'Observaciones', visible: true }
+    { key: 'observaciones',   label: 'Obs.', visible: true }
   ];
 
   // Non-configurable columns (select always first)
@@ -191,7 +211,10 @@ export class DiarioComponent implements OnInit {
     this.isLoading.set(true);
     this.selection.clear();
     try {
-      const dateString = this.currentDate.toISOString().split('T')[0];
+      const year = this.currentDate.getFullYear();
+      const month = String(this.currentDate.getMonth() + 1).padStart(2, '0');
+      const day = String(this.currentDate.getDate()).padStart(2, '0');
+      const dateString = `${year}-${month}-${day}`;
       const data = await this.expedienteService.getDailyConsolidated(dateString);
       this.records.set(data);
     } catch (e) {
@@ -219,7 +242,10 @@ export class DiarioComponent implements OnInit {
     const isSup = user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
 
     const rows = this.dataToExport.map(r => {
-      const row: any = { 'DNI Solicitante': r['dni_solicitante'] || 'N/A' };
+      const row: any = { 
+        'Fecha': this.datePipe.transform(r['fecha_registro'], 'dd/MM/yyyy HH:mm') || '',
+        'DNI Solicitante': r['dni_solicitante'] || 'N/A' 
+      };
       if (isSup) row['Operador'] = r.expand?.['operador']?.nombre || 'Desconocido';
       
       row['Apellidos y Nombres'] = r['apellidos_nombres'];
@@ -237,31 +263,90 @@ export class DiarioComponent implements OnInit {
     XLSX.writeFile(wb, `Reporte_${this.datePipe.transform(this.currentDate, 'yyyyMMdd')}.xlsx`);
   }
 
-  exportToPDF() {
+  async exportToPDF() {
     const user = this.authService.currentUser();
     const isSup = user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
 
     const doc = new jsPDF({ orientation: 'landscape' });
     const date = this.datePipe.transform(this.currentDate, 'dd/MM/yyyy');
+    const timeStr = this.datePipe.transform(new Date(), 'HH:mm');
     const total = this.dataToExport.length;
+
+    // 1. Register report in PocketBase & get verify URL
+    const year = this.currentDate.getFullYear();
+    const month = String(this.currentDate.getMonth() + 1).padStart(2, '0');
+    const day = String(this.currentDate.getDate()).padStart(2, '0');
+    let qrDataUrl = '';
+    let reportId = '';
+    try {
+      const snapshot = {
+        operador: user?.['nombre'] || 'N/A',
+        sede: 'Ambas',
+        fecha_reporte: `${day}/${month}/${year}`,
+        tipo: 'REPORTE_DIARIO',
+        registros: this.dataToExport.map((r, i) => ({
+          n: i + 1,
+          dni: r['dni_solicitante'] || '',
+          nombre: r['apellidos_nombres'] || '',
+          tramite: r['tramite'] || '',
+          categoria: r['categoria'] || '',
+          estado: r['estado'] || '',
+          sede: r['lugar_entrega'] || '',
+          operador: r.expand?.['operador']?.nombre || '',
+          fecha: this.datePipe.transform(r['fecha_registro'], 'dd/MM/yyyy') || '',
+          observaciones: r['observaciones'] || ''
+        }))
+      };
+      const { id, verifyUrl } = await this.reporteService.registrarReporte({
+        generado_por: user!.id,
+        tipo_reporte: 'REPORTE_DIARIO',
+        fecha_reporte: `${year}-${month}-${day}`,
+        total_registros: total,
+        sede: 'Ambas'
+      }, snapshot);
+      reportId = id;
+      qrDataUrl = await this.reporteService.generarQR(verifyUrl);
+    } catch (e) {
+      console.warn('No se pudo registrar el reporte, continuando sin QR:', e);
+    }
+
+    // 2. Header
+    const pageW = doc.internal.pageSize.width;
     doc.setFontSize(14);
     doc.text(`DRTC PUNO - Reporte Consolidado Diario - ${date}`, 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Total de expedientes: ${total}`, 14, 22);
+    doc.setFontSize(9);
+    doc.text(`Generado por: ${user?.['nombre'] || 'N/A'} | Fecha/Hora: ${date} ${timeStr} | Total: ${total}`, 14, 22);
+    if (reportId) {
+      doc.setFontSize(8);
+      doc.setTextColor(100);
+      doc.text(`ID Reporte: ${reportId}`, 14, 27);
+      doc.setTextColor(0);
+    }
 
+    // 3. QR in top-right corner
+    if (qrDataUrl) {
+      doc.addImage(qrDataUrl, 'PNG', pageW - 42, 6, 30, 30);
+      doc.setFontSize(6);
+      doc.setTextColor(120);
+      doc.text('Verificar\nautenticidad', pageW - 40, 38);
+      doc.setTextColor(0);
+    }
+
+    // 4. Table
     const head = isSup
-      ? [['DNI Solic.', 'Operador', 'Solicitante', 'Trámite', 'Estado', 'Categ.', 'Lugar', 'Observaciones']]
-      : [['DNI Solic.', 'Solicitante', 'Trámite', 'Estado', 'Categ.', 'Lugar', 'Observaciones']];
+      ? [['Fecha', 'DNI Solic.', 'Operador', 'Solicitante', 'Trámite', 'Estado', 'Categ.', 'Lugar', 'Observaciones']]
+      : [['Fecha', 'DNI Solic.', 'Solicitante', 'Trámite', 'Estado', 'Categ.', 'Lugar', 'Observaciones']];
 
     const body = this.dataToExport.map(r => {
-      const row = [r['dni_solicitante'] || 'N/A'];
+      const fechaStr = this.datePipe.transform(r['fecha_registro'], 'dd/MM/yyyy HH:mm') || '';
+      const row = [fechaStr, r['dni_solicitante'] || 'N/A'];
       if (isSup) row.push(r.expand?.['operador']?.nombre || 'Desconocido');
       row.push(r['apellidos_nombres'], r['tramite'], r['estado'] || 'EN PROCESO', r['categoria'], r['lugar_entrega'], r['observaciones'] || '');
       return row;
     });
 
     autoTable(doc, {
-      startY: 28,
+      startY: 40,
       head: head,
       body: body,
       headStyles: { fillColor: [10, 61, 98] },
@@ -270,7 +355,47 @@ export class DiarioComponent implements OnInit {
     });
 
     doc.save(`Reporte_${this.datePipe.transform(this.currentDate, 'yyyyMMdd')}.pdf`);
+    this.snackBar.open('PDF generado y registrado en el sistema', 'OK', { duration: 3000, panelClass: ['success-snackbar'] });
   }
 
   printReport() { window.print(); }
+
+  @ViewChild('obsDialog') obsDialogTemplate!: TemplateRef<any>;
+  viewObservacion(texto: string) {
+    this.dialog.open(this.obsDialogTemplate, {
+      data: texto,
+      width: '400px',
+      panelClass: 'custom-dialog-container'
+    });
+  }
+
+  async updateEstado(record: RecordModel, nuevoEstado: string) {
+    if (record['estado'] === nuevoEstado) return;
+    
+    let obsToAppend: string | undefined = undefined;
+    if (nuevoEstado === 'OBSERVADO') {
+       const obs = prompt('Ingrese el motivo de observación:');
+       if (!obs || obs.trim().length < 5) {
+         this.snackBar.open('Debe ingresar un motivo válido (min 5 caracteres).', 'Cerrar', { duration: 3000 });
+         this.loadData();
+         return;
+       }
+       obsToAppend = obs.trim();
+    }
+
+    this.isLoading.set(true);
+    try {
+      await this.expedienteService.updateExpediente(
+        record.id,
+        { estado: nuevoEstado },
+        'CAMBIO_ESTADO_RAPIDO',
+        obsToAppend
+      );
+      this.snackBar.open('Estado actualizado correctamente', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
+    } catch(e: any) {
+      this.snackBar.open('Error al cambiar estado: ' + e.message, 'Cerrar', { duration: 4000, panelClass: ['error-snackbar'] });
+    } finally {
+      this.loadData();
+    }
+  }
 }

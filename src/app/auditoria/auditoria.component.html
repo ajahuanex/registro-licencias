@@ -4,9 +4,7 @@
       <h1>Auditoría Global</h1>
       <p>Registro histórico de todas las acciones del sistema</p>
     </div>
-    
     <div class="actions">
-      <!-- Search Form -->
       <mat-form-field appearance="outline" subscriptSizing="dynamic" style="width: 300px;">
         <mat-label>Buscador General</mat-label>
         <input matInput (input)="searchTerm.set($any($event.target).value)" placeholder="Buscar DNI, operador, acción...">
@@ -23,19 +21,19 @@
           <td mat-cell *matCellDef="let element"> {{element.created | date:'dd/MM/yyyy HH:mm:ss'}} </td>
         </ng-container>
 
-        <ng-container matColumnDef="operador">
+        <ng-container matColumnDef="operador_nombre">
           <th mat-header-cell *matHeaderCellDef> Operador </th>
-          <td mat-cell *matCellDef="let element"> <strong>{{element.expand?.['operador']?.nombre || 'Desconocido'}}</strong> </td>
+          <td mat-cell *matCellDef="let element"> <strong>{{element.operador_nombre || 'Desconocido'}}</strong> </td>
         </ng-container>
 
-        <ng-container matColumnDef="perfil">
+        <ng-container matColumnDef="operador_perfil">
           <th mat-header-cell *matHeaderCellDef> Perfil </th>
-          <td mat-cell *matCellDef="let element"> <span class="badge">{{element.perfil}}</span> </td>
+          <td mat-cell *matCellDef="let element"> <span class="badge">{{element.operador_perfil || element.perfil}}</span> </td>
         </ng-container>
 
-        <ng-container matColumnDef="expediente">
+        <ng-container matColumnDef="expediente_dni">
           <th mat-header-cell *matHeaderCellDef> DNI Expediente </th>
-          <td mat-cell *matCellDef="let element"> {{element.expand?.['expediente']?.dni_solicitante || 'N/A'}} </td>
+          <td mat-cell *matCellDef="let element"> {{element.expediente_dni || 'N/A'}} </td>
         </ng-container>
 
         <ng-container matColumnDef="accion">
