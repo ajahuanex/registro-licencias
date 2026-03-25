@@ -34,7 +34,7 @@ import { Component as CompDeco, Inject } from '@angular/core';
   standalone: true,
   imports: [
     CommonModule, ReactiveFormsModule, MatFormFieldModule, MatInputModule,
-    MatSelectModule, MatButtonModule, MatIconModule, MatDialogModule
+    MatSelectModule, MatButtonModule, MatIconModule, MatDialogModule, MatTooltipModule
   ],
   template: `
 <h2 mat-dialog-title>
@@ -42,14 +42,17 @@ import { Component as CompDeco, Inject } from '@angular/core';
 </h2>
 <mat-dialog-content>
   <form [formGroup]="form" class="form-grid">
+    <mat-form-field appearance="outline"><mat-label>DNI del Solicitante</mat-label>
+      <input matInput formControlName="dni_solicitante" maxlength="8" (keyup.enter)="searchDni()">
+      <mat-icon matPrefix>badge</mat-icon>
+      <button mat-icon-button matSuffix type="button" (click)="searchDni()" [disabled]="isSearchingDni()" matTooltip="Buscar en RENIEC (Próximamente)">
+        <mat-icon>{{ isSearchingDni() ? 'hourglass_empty' : 'search' }}</mat-icon>
+      </button>
+      @if(form.controls.dni_solicitante.hasError('pattern')&&form.controls.dni_solicitante.touched){<mat-error>Debe tener 8 dígitos</mat-error>}
+    </mat-form-field>
     <mat-form-field appearance="outline" class="two-col input-upper"><mat-label>Apellidos y Nombres Completos</mat-label>
       <input matInput formControlName="apellidos_nombres" placeholder="APELLIDO NOMBRE">
       <mat-icon matPrefix>person</mat-icon>
-    </mat-form-field>
-    <mat-form-field appearance="outline"><mat-label>DNI del Solicitante</mat-label>
-      <input matInput formControlName="dni_solicitante" maxlength="8">
-      <mat-icon matPrefix>badge</mat-icon>
-      @if(form.controls.dni_solicitante.hasError('pattern')&&form.controls.dni_solicitante.touched){<mat-error>Debe tener 8 dígitos</mat-error>}
     </mat-form-field>
     <mat-form-field appearance="outline"><mat-label>Celular (opcional)</mat-label>
       <input matInput formControlName="celular" maxlength="12" placeholder="9XXXXXXXX">
@@ -136,6 +139,7 @@ export class ExpedienteFormModal {
   lugares = ['Puno', 'Juliaca'];
   saving = signal(false);
   isReadOnly = signal(false);
+  isSearchingDni = signal(false);
 
   private static readonly ESTADOS_POR_PERFIL: Record<string, string[]> = {
     // Registra expediente — solo puede marcar problemas
@@ -228,6 +232,17 @@ export class ExpedienteFormModal {
       }
       obsControl?.updateValueAndValidity();
     });
+  }
+
+  async searchDni() {
+    const dni = this.form.get('dni_solicitante')?.value;
+    if (!dni || dni.length !== 8) {
+      this.snackBar.open('Ingrese un DNI válido de 8 dígitos', 'Cerrar', { duration: 3000 });
+      return;
+    }
+
+    // TODO: Conectar a API real de RENIEC cuando esté disponible
+    this.snackBar.open('La búsqueda automática de DNI estará disponible próximamente.', 'Entendido', { duration: 4000, panelClass: ['info-snackbar'] });
   }
 
   async onSubmit() {

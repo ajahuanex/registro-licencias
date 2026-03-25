@@ -27,10 +27,6 @@ export const routes: Routes = [
         loadComponent: () => import('./dashboard/dashboard.component').then(m => m.DashboardComponent)
       },
       {
-        path: 'expedientes/registro',
-        loadComponent: () => import('./expedientes/registro/registro.component').then(m => m.RegistroComponent)
-      },
-      {
         path: 'mis-expedientes',
         loadComponent: () => import('./mis-expedientes/mis-expedientes').then(m => m.MisExpedientes)
       },
