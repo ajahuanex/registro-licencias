@@ -111,21 +111,37 @@
       </mat-card>
     </mat-tab>
 
-    <!-- PESTAÑA: ENTREGADAS HOY -->
-    <mat-tab label="Entregadas Hoy">
+    <!-- PESTAÑA: HISTORIAL DE ENTREGAS -->
+    <mat-tab label="Historial de Entregas">
       <mat-card class="mat-elevation-z3" style="margin-top: 1rem;">
-        <div class="actions-bar" style="padding: 1rem; display: flex; justify-content: flex-end; gap: 8px; border-bottom: 1px solid #e0e0e0;">
-           <button mat-stroked-button color="primary" (click)="exportExcel()" [disabled]="deliveredRecords().length === 0">
-             <mat-icon>table_view</mat-icon> Exportar Excel
-           </button>
-           <button mat-flat-button color="primary" (click)="exportPDF()" [disabled]="deliveredRecords().length === 0">
-             <mat-icon>picture_as_pdf</mat-icon> Exportar PDF
-           </button>
+        <div class="actions-bar" style="padding: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 8px; border-bottom: 1px solid #e0e0e0;">
+           <div class="table-filters" style="display: flex; gap: 12px; align-items: center;">
+             <mat-form-field appearance="outline" subscriptSizing="dynamic" style="width: 200px;">
+               <mat-label>Filtrar por Fecha</mat-label>
+               <mat-select [ngModel]="selectedRange()" (ngModelChange)="onRangeChange($event)">
+                 <mat-option value="hoy">Hoy</mat-option>
+                 <mat-option value="ayer">Ayer</mat-option>
+                 <mat-option value="semana">Últimos 7 días</mat-option>
+                 <mat-option value="mes">Mes Actual</mat-option>
+                 <mat-option value="historico">Todo el Historial</mat-option>
+               </mat-select>
+               <mat-icon matPrefix>calendar_today</mat-icon>
+             </mat-form-field>
+           </div>
+
+           <div style="display: flex; gap: 8px;">
+             <button mat-stroked-button color="primary" (click)="exportExcel()" [disabled]="deliveredRecords().length === 0">
+               <mat-icon>table_view</mat-icon> Exportar Excel
+             </button>
+             <button mat-flat-button color="primary" (click)="exportPDF()" [disabled]="deliveredRecords().length === 0">
+               <mat-icon>picture_as_pdf</mat-icon> Exportar PDF
+             </button>
+           </div>
         </div>
         @if (isLoading()) {
           <div class="loading-overlay">
             <div class="spinner"></div>
-            <span>Cargando entregas del día...</span>
+            <span>Cargando historial de entregas...</span>
           </div>
         } @else {
           <div class="table-container">
@@ -134,7 +150,7 @@
               <!-- N° -->
               <ng-container matColumnDef="num">
                 <th mat-header-cell *matHeaderCellDef> N° </th>
-                <td mat-cell *matCellDef="let element; let i = index"> <strong>{{i + 1}}</strong> </td>
+                <td mat-cell *matCellDef="let element; let i = index"> <strong>{{ (deliveredPage() - 1) * deliveredPageSize() + i + 1 }}</strong> </td>
               </ng-container>
 
               <!-- DNI -->
@@ -165,8 +181,8 @@
     
               <!-- Hora de Entrega -->
               <ng-container matColumnDef="fecha_entrega">
-                <th mat-header-cell *matHeaderCellDef> Hora de Entrega </th>
-                <td mat-cell *matCellDef="let element"> {{element.updated | date:'HH:mm a'}} </td>
+                <th mat-header-cell *matHeaderCellDef> Fecha/Hora de Entrega </th>
+                <td mat-cell *matCellDef="let element"> {{element.updated | date:'dd/MM/yyyy HH:mm a'}} </td>
               </ng-container>
 
               <tr mat-header-row *matHeaderRowDef="deliveredColumns; sticky: true"></tr>
@@ -175,11 +191,20 @@
               <tr class="mat-row" *matNoDataRow>
                 <td class="mat-cell empty-cell" [attr.colspan]="deliveredColumns.length">
                   <mat-icon>info</mat-icon>
-                  <p>Aún no se han entregado licencias en el día de hoy.</p>
+                  <p>No se encontraron licencias entregadas en el rango seleccionado.</p>
                 </td>
               </tr>
             </table>
           </div>
+          
+          <mat-paginator [length]="deliveredTotalItems()"
+                         [pageSize]="deliveredPageSize()"
+                         [pageIndex]="deliveredPage() - 1"
+                         [pageSizeOptions]="[5, 10, 20, 50]"
+                         (page)="onPageChange($event)"
+                         showFirstLastButtons
+                         aria-label="Seleccionar página">
+          </mat-paginator>
         }
       </mat-card>
     </mat-tab>

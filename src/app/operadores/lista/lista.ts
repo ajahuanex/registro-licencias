@@ -5,6 +5,7 @@ import { OperadorService } from '../../core/services/operador.service';
 import { AuthService } from '../../core/services/auth.service';
 import { RecordModel } from 'pocketbase';
 import { ModalOperador } from '../modal-operador/modal-operador';
+import { ConfirmImpersonationDialog } from '../confirm-impersonation-dialog';
 
 import { MatTableModule } from '@angular/material/table';
 import { MatCardModule } from '@angular/material/card';
@@ -58,19 +59,30 @@ export class Lista implements OnInit {
   
   displayedColumns: string[] = ['dni', 'nombre', 'perfil', 'sede', 'email', 'acciones'];
 
-  isOti() {
-    const p = this.authService.currentUser()?.['perfil'];
+  isOti = computed(() => {
+    const user = this.authService.currentUser();
+    const p = user?.['perfil'];
     return p === 'OTI' || p === 'ADMINISTRADOR';
-  }
+  });
 
   isCurrentUser(id: string) {
     return this.authService.currentUser()?.id === id;
   }
 
   actAs(operador: RecordModel) {
-    if (confirm(`¿Estás seguro de que quieres actuar como ${operador['nombre']}?`)) {
-      this.authService.impersonate(operador);
-    }
+    console.log(`[LISTA] actAs invocado para: ${operador['nombre']} (ID: ${operador.id})`);
+    
+    const dialogRef = this.dialog.open(ConfirmImpersonationDialog, {
+      width: '400px',
+      data: { nombre: operador['nombre'] || operador['username'] }
+    });
+
+    dialogRef.afterClosed().subscribe(result => {
+      console.log(`[LISTA] Dialog result: ${result}`);
+      if (result) {
+        this.authService.impersonate(operador);
+      }
+    });
   }
 
   async ngOnInit() {

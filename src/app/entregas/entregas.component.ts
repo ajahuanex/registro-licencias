@@ -16,6 +16,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatInputModule } from '@angular/material/input';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatTabsModule } from '@angular/material/tabs';
+import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -31,7 +32,8 @@ import autoTable from 'jspdf-autotable';
     MatSnackBarModule,
     MatInputModule,
     MatFormFieldModule,
-    MatTabsModule
+    MatTabsModule,
+    MatPaginatorModule
   ],
   providers: [DatePipe],
   templateUrl: './entregas.component.html',
@@ -48,8 +50,21 @@ export class EntregasComponent implements OnInit {
   records = signal<RecordModel[]>([]);
   deliveredRecords = signal<RecordModel[]>([]);
   isLoading = signal(true);
+
+  // Filtros y Paginación para Entregas
+  selectedRange = signal<'hoy' | 'ayer' | 'semana' | 'mes' | 'historico'>('hoy');
+  deliveredPage = signal(1); // PocketBase uses 1-based indexing
+  deliveredPageSize = signal(10);
+  deliveredTotalItems = signal(0);
   
-  currentUserSede = signal<string>('');
+  currentUserSede = computed(() => {
+    const user = this.authService.currentUser();
+    if (user && user['sede']) {
+      const rawSede = String(user['sede']).trim().toLowerCase();
+      return rawSede === 'juliaca' ? 'Juliaca' : 'Puno';
+    }
+    return '';
+  });
   currentDate = new Date();
 
   searchTerm = signal('');
@@ -81,13 +96,9 @@ export class EntregasComponent implements OnInit {
   private datePipe = inject(DatePipe);
 
   async ngOnInit() {
-    const user = this.authService.currentUser();
-    if (user && user['sede']) {
-      // Parse potentially array values (from PB select) to string
-      const rawSede = String(user['sede']).trim().toLowerCase();
-      const parsedSede = rawSede === 'juliaca' ? 'Juliaca' : 'Puno';
-      this.selectedLugar.set(parsedSede);
-      this.currentUserSede.set(parsedSede);
+    const sede = this.currentUserSede();
+    if (sede) {
+      this.selectedLugar.set(sede);
     }
     await this.loadData();
   }
@@ -107,23 +118,64 @@ export class EntregasComponent implements OnInit {
   async loadData() {
     this.isLoading.set(true);
     try {
-      const year = this.currentDate.getFullYear();
-      const month = String(this.currentDate.getMonth() + 1).padStart(2, '0');
-      const day = String(this.currentDate.getDate()).padStart(2, '0');
-      const dateString = `${year}-${month}-${day}`;
-
-      const [pending, delivered] = await Promise.all([
-        this.expedienteService.getPendingDeliveries(this.selectedLugar()),
-        this.expedienteService.getDailyDeliveries(this.selectedLugar(), dateString)
-      ]);
-      
+      // 1. Cargar PENDIENTES (Sigue siendo lista completa por ahora, suelen ser pocas)
+      const pending = await this.expedienteService.getPendingDeliveries(this.selectedLugar());
       this.records.set(pending);
-      this.deliveredRecords.set(delivered);
+
+      // 2. Calcular rango de fechas para ENTREGADOS
+      const { start, end } = this.getDateRange(this.selectedRange());
+
+      // 3. Cargar ENTREGADOS con Filtro y Paginación
+      const result = await this.expedienteService.getFilteredDeliveries(
+        this.selectedLugar(),
+        start,
+        end,
+        this.deliveredPage(),
+        this.deliveredPageSize()
+      );
+
+      this.deliveredRecords.set(result.items);
+      this.deliveredTotalItems.set(result.totalItems);
     } catch (e: any) {
       this.snackBar.open('Error cargando datos: ' + e.message, 'Cerrar', { duration: 3000 });
     } finally {
       this.isLoading.set(false);
     }
+  }
+
+  private getDateRange(range: string): { start: Date, end: Date } {
+    const now = new Date();
+    let start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    let end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    switch (range) {
+      case 'ayer':
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+        break;
+      case 'semana':
+        start.setDate(start.getDate() - 7);
+        break;
+      case 'mes':
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+        break;
+      case 'historico':
+        start = new Date(2020, 0, 1, 0, 0, 0, 0); // Desde el inicio
+        break;
+    }
+    return { start, end };
+  }
+
+  onPageChange(event: PageEvent) {
+    this.deliveredPage.set(event.pageIndex + 1);
+    this.deliveredPageSize.set(event.pageSize);
+    this.loadData();
+  }
+
+  onRangeChange(range: any) {
+    this.selectedRange.set(range);
+    this.deliveredPage.set(1); // Reset to first page
+    this.loadData();
   }
 
   onLugarChange() {

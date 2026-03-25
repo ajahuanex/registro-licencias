@@ -209,6 +209,34 @@ export class ExpedienteService {
     }
   }
 
+  /**
+   * Retrieves paginated deliveries for a specific location and date range.
+   */
+  async getFilteredDeliveries(
+    lugar: string, 
+    start: Date, 
+    end: Date, 
+    page: number = 1, 
+    perPage: number = 20
+  ): Promise<{ items: RecordModel[], totalItems: number }> {
+    try {
+      const filterStr = `estado = "ENTREGADO" && lugar_entrega = "${lugar}" && updated >= "${start.toISOString().replace('T', ' ')}" && updated <= "${end.toISOString().replace('T', ' ')}"`;
+
+      const result = await this.pbService.pb.collection(this.collectionName).getList(page, perPage, {
+        filter: filterStr,
+        sort: '-updated'
+      });
+
+      return {
+        items: result.items,
+        totalItems: result.totalItems
+      };
+    } catch (error: any) {
+      console.error('Error fetching filtered deliveries:', error);
+      return { items: [], totalItems: 0 };
+    }
+  }
+
   async getGlobalHistory(): Promise<RecordModel[]> {
     try {
       return await this.pbService.pb.collection('historial_expedientes').getFullList({

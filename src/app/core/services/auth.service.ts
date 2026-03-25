@@ -21,43 +21,61 @@ export class AuthService {
     private pbService: PocketbaseService,
     private router: Router
   ) {
-    // Initialize from existing authStore (e.g. on page refresh)
-    this.currentUser.set(this.pbService.pb.authStore.model);
+    let isImpersonatingFromStorage = false;
 
-    // Bind PocketBase auth state changes to our Angular Signal
-    this.pbService.pb.authStore.onChange((token, model) => {
-      // If we are impersonating, DO NOT overwrite the impersonated user model
-      // unless it's a completely new login/logout event (token changed drastically or cleared).
-      if (!this.isImpersonating()) {
-        this.currentUser.set(model);
-      }
-    });
-
-    // Check localStorage for persisted impersonation state
+    // Check localStorage for persisted impersonation state FIRST
     if (typeof localStorage !== 'undefined') {
       const savedImpersonation = localStorage.getItem('impersonation_state');
+      // Pocketbase service is initialized already. Let's check if the real token is still valid.
       if (savedImpersonation && this.pbService.pb.authStore.isValid) {
         try {
           const { original, target } = JSON.parse(savedImpersonation);
           this.originalAuth.set(original);
           this.currentUser.set(target);
+          isImpersonatingFromStorage = true;
         } catch (e) {
           localStorage.removeItem('impersonation_state');
         }
       }
     }
+
+    // Initialize from existing authStore if NOT impersonating
+    if (!isImpersonatingFromStorage) {
+      this.currentUser.set(this.pbService.pb.authStore.model);
+    }
+
+    // Bind PocketBase auth state changes to our Angular Signal
+    this.pbService.pb.authStore.onChange((token, model) => {
+      // If we are impersonating, DO NOT overwrite the impersonated user model
+      // unless it's a completely new login/logout event (token changed drastically or cleared).
+      if (!model) {
+        // Logout event from PocketBase
+        this.originalAuth.set(null);
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem('impersonation_state');
+        }
+        this.currentUser.set(null);
+      } else if (!this.isImpersonating()) {
+        this.currentUser.set(model);
+      }
+    });
   }
 
   async login(dni: string, password: string): Promise<boolean> {
-    console.log(`[AUTH DEBUG] Intentando login con DNI: "${dni}", Password: "${password}"`);
+    console.log(`[AUTH] Intento de login: ${dni}`);
     try {
-      this.pbService.pb.authStore.clear(); // Limpiar posible token viejo o corrupto
+      this.pbService.pb.authStore.clear(); 
+      // Clear any stale impersonation state on a fresh login
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('impersonation_state');
+      }
+      this.originalAuth.set(null);
+
       const authData = await this.pbService.pb.collection('operadores').authWithPassword(dni, password);
-      console.log("[AUTH DEBUG] Login exitoso, authData:", authData);
+      console.log("[AUTH] Login exitoso para:", authData.record['nombre']);
       return true;
     } catch (err: any) {
-      console.error('[AUTH DEBUG] Error completo de PocketBase:', err);
-      console.error('Authentication Error:', err.message);
+      console.error('[AUTH] Login fallido:', err.message);
       return false;
     }
   }
@@ -72,20 +90,27 @@ export class AuthService {
 
   // --- IMPERSONATION LOGIC ---
   impersonate(targetUser: RecordModel): void {
-    // Only OTI and ADMINISTRADOR should theoretically trigger this, but we'll allow it if they reached the button.
+    console.log(`[IMPERSONATE] Iniciando suplantación para: ${targetUser['nombre']}`);
+    
     const currentModel = this.pbService.pb.authStore.model as RecordModel;
-    if (!currentModel) return;
-
-    if (!this.isImpersonating()) {
-      // Save the real auth data
-      this.originalAuth.set({
-        token: this.pbService.pb.authStore.token,
-        model: currentModel
-      });
+    if (!currentModel) {
+      console.warn('[IMPERSONATE] Abortando: No hay usuario autenticado en authStore');
+      return;
     }
 
-    // Set the target user as the current user in Angular UI
+    // Capture original auth if not already impersonating
+    if (!this.isImpersonating()) {
+      const original = {
+        token: this.pbService.pb.authStore.token,
+        model: currentModel
+      };
+      this.originalAuth.set(original);
+      console.log('[IMPERSONATE] Identidad original guardada.');
+    }
+
+    // Update current user signal
     this.currentUser.set(targetUser);
+    console.log('[IMPERSONATE] Signal currentUser actualizado.');
 
     // Persist to survive reloads
     if (typeof localStorage !== 'undefined') {
@@ -95,8 +120,11 @@ export class AuthService {
       }));
     }
 
-    // Redirect to dashboard to see their view
-    this.router.navigate(['/dashboard']);
+    // Redirect to dashboard
+    this.router.navigate(['/dashboard']).then(success => {
+      if (success) console.log('[IMPERSONATE] Redirección exitosa a Dashboard');
+      else console.error('[IMPERSONATE] Falló redirección a Dashboard');
+    });
   }
 
   stopImpersonating(): void {
