@@ -5,6 +5,7 @@ import { ReporteService } from '../../core/services/reporte.service';
 import { RecordModel } from 'pocketbase';
 import { SelectionModel } from '@angular/cdk/collections';
 import { AuthService } from '../../core/services/auth.service';
+import { ESTADOS_SISTEMA, ESTADOS_POR_PERFIL } from '../../core/constants/app.constants';
 
 import { MatTableModule } from '@angular/material/table';
 import { MatCardModule } from '@angular/material/card';
@@ -93,18 +94,11 @@ export class DiarioComponent implements OnInit {
   });
 
   // ── States per profile ────────────────────────────────────────
-  private static readonly ESTADOS_POR_PERFIL: Record<string, string[]> = {
-    SUPERVISOR:    ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'],
-    ADMINISTRADOR: ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'],
-    OTI:           ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'],
-    ENTREGADOR:    ['ENTREGADO'],
-    OPERADOR:      ['EN PROCESO'],
-  };
+  // Extraído a app.constants.ts
 
   estadosPermitidos = computed(() => {
     const perfil = this.authService.currentUser()?.['perfil'] ?? '';
-    return DiarioComponent.ESTADOS_POR_PERFIL[perfil]
-        ?? ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'];
+    return ESTADOS_POR_PERFIL[perfil] ?? [...ESTADOS_SISTEMA];
   });
 
 

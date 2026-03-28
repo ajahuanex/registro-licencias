@@ -5,6 +5,7 @@ import { ExpedienteService } from '../core/services/expediente.service';
 import { AuthService } from '../core/services/auth.service';
 import { ReporteService } from '../core/services/reporte.service';
 import { RecordModel } from 'pocketbase';
+import { ESTADOS_SISTEMA } from '../core/constants/app.constants';
 
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -233,7 +234,7 @@ export class ReporteMensualComponent implements OnInit {
 
   get mesLabel() { return this.meses[this.selectedMonth]?.label ?? ''; }
 
-  estadoKeys = ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'ENTREGADO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'];
+  estadoKeys = [...ESTADOS_SISTEMA];
 
   stats = computed<Stats>(() => {
     const recs = this.records();

@@ -6,6 +6,7 @@ import { RecordModel } from 'pocketbase';
 import { ExpedienteService, ExpedienteCreate } from '../core/services/expediente.service';
 import { AuthService } from '../core/services/auth.service';
 import { PocketbaseService } from '../core/services/pocketbase.service';
+import { ESTADOS_SISTEMA, ESTADOS_POR_PERFIL } from '../core/constants/app.constants';
 
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
 import { MatPaginatorModule, MatPaginator } from '@angular/material/paginator';
@@ -141,23 +142,7 @@ export class ExpedienteFormModal {
   isReadOnly = signal(false);
   isSearchingDni = signal(false);
 
-  private static readonly ESTADOS_POR_PERFIL: Record<string, string[]> = {
-    // Registra expediente — solo puede marcar problemas
-    REGISTRADOR:      ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'],
-    OPERADOR:         ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'],
-    // Supervisor de Impresión — imprime la licencia física
-    SUP_IMPRESION:    ['IMPRESO', 'OBSERVADO', 'RECHAZADO'],
-    // Supervisor de Control de Calidad — verifica impresión y datos; aprueba para entrega
-    SUP_CALIDAD:      ['ATENDIDO', 'OBSERVADO', 'RECHAZADO'],
-    // Supervisor genérico — acceso amplio
-    SUPERVISOR:       ['EN PROCESO', 'IMPRESO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ANULADO'],
-    // Entregador — solo confirma entrega física
-    ENTREGADOR:       ['ENTREGADO'],
-    // Administrador — control total
-    ADMINISTRADOR:    ['EN PROCESO', 'IMPRESO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'],
-    // OTI — control total + configuraciones globales del sistema
-    OTI:              ['EN PROCESO', 'IMPRESO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'],
-  };
+  // Diccionarios centralizados en app.constants.ts
 
   private authServiceModal = inject(AuthService);
   private expedienteService = inject(ExpedienteService);
@@ -167,8 +152,7 @@ export class ExpedienteFormModal {
 
   get estados(): string[] {
     const perfil = this.authServiceModal.currentUser()?.['perfil'] ?? '';
-    return ExpedienteFormModal.ESTADOS_POR_PERFIL[perfil]
-      ?? ['EN PROCESO', 'VERIFICADO', 'ATENDIDO', 'OBSERVADO', 'RECHAZADO', 'ENTREGADO', 'ANULADO'];
+    return ESTADOS_POR_PERFIL[perfil] ?? [...ESTADOS_SISTEMA];
   }
 
   /** Categorías disponibles según el trámite seleccionado */

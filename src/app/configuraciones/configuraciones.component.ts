@@ -12,19 +12,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { PocketbaseService } from '../core/services/pocketbase.service';
-
-// ─── Sistema constants ────────────────────────────────────────────────────────
-const ESTADOS_SISTEMA = [
-  'EN PROCESO', 'IMPRESO', 'ATENDIDO', 'ENTREGADO',
-  'OBSERVADO', 'RECHAZADO', 'ANULADO'
-];
-const PERFILES_SISTEMA = [
-  'REGISTRADOR', 'OPERADOR',
-  'SUP_IMPRESION', 'SUP_CALIDAD',
-  'SUPERVISOR',
-  'ENTREGADOR',
-  'ADMINISTRADOR', 'OTI'
-];
+import { ESTADOS_SISTEMA, PERFILES_SISTEMA } from '../core/constants/app.constants';
 
 // ─── Sync Modal ───────────────────────────────────────────────────────────────
 @Component({
