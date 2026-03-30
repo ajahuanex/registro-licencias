@@ -157,7 +157,30 @@ export class AdminAuthModal {
         } else {
           this.log('  ✅ Campos de verificación — existen.');
         }
-      } else { this.log('  ❌ Colección "expedientes" no encontrada.'); }
+        } else {
+          this.log('  ❌ Colección "expedientes" no encontrada. Creando...');
+          const ok = await createCol({
+            name: 'expedientes',
+            type: 'base',
+            system: false,
+            listRule: '@request.auth.id != ""',
+            viewRule: '@request.auth.id != ""',
+            createRule: '@request.auth.id != ""',
+            updateRule: '@request.auth.id != ""',
+            deleteRule: '',
+            fields: [
+              { name: 'dni', type: 'text', required: true },
+              { name: 'nombre', type: 'text', required: true },
+              { name: 'apellido', type: 'text', required: true },
+              { name: 'celular', type: 'text', required: false },
+              { name: 'estado', type: 'select', required: true, options: { values: [
+                'EN PROCESO','IMPRESO','VERIFICADO','ENTREGADO','OBSERVADO','RECHAZADO','ANULADO','ATENDIDO'
+              ] } },
+              { name: 'reviso_sanciones', type: 'bool', required: false }
+            ]
+          });
+          this.log(ok ? '  ✅ Colección "expedientes" creada.' : '  ❌ Error creando "expedientes"');
+        }
 
       // ── 3. operadores.perfil ──────────────────────────────────────────────
       this.log('⏳ [2/4] Verificando "operadores"...');
@@ -179,7 +202,28 @@ export class AdminAuthModal {
         }
         await patchCol('operadores', { listRule: "@request.auth.id != ''", viewRule: "@request.auth.id != ''" });
         this.log('  ✅ Reglas de acceso verificadas.');
-      } else { this.log('  ❌ Colección "operadores" no encontrada.'); }
+        } else {
+          this.log('  ❌ Colección "operadores" no encontrada. Creando...');
+          const ok = await createCol({
+            name: 'operadores',
+            type: 'auth',
+            system: false,
+            listRule: '@request.auth.id != ""',
+            viewRule: '@request.auth.id != ""',
+            createRule: '@request.auth.id != ""',
+            updateRule: '@request.auth.id != ""',
+            deleteRule: '',
+            fields: [
+              { name: 'email', type: 'email', required: true, unique: true },
+              { name: 'nombre', type: 'text', required: true },
+              { name: 'apellido', type: 'text', required: true },
+              { name: 'perfil', type: 'select', required: true, options: { values: [
+                'REGISTRADOR','OPERADOR','IMPRESOR','SUPERVISOR','ENTREGADOR','ADMINISTRADOR','OTI'
+              ] } }
+            ]
+          });
+          this.log(ok ? '  ✅ Colección "operadores" creada.' : '  ❌ Error creando "operadores"');
+        }
 
       // ── 4. historial_acciones ──────────────────────────────────────────
       this.log('⏳ [3/4] Verificando "historial_acciones"...');
@@ -226,8 +270,24 @@ export class AdminAuthModal {
         await patchCol('reportes_generados', { viewRule: '' });
         this.log('  ✅ viewRule pública asegurada (verificación QR funciona sin login).');
       } else {
-        this.log('  ❌ Colección "reportes_generados" no encontrada.');
-      }
+          this.log('  ❌ Colección "reportes_generados" no encontrada. Creando...');
+          const ok = await createCol({
+            name: 'reportes_generados',
+            type: 'base',
+            system: false,
+            listRule: '',
+            viewRule: '',
+            createRule: '@request.auth.id != ""',
+            updateRule: '@request.auth.id != ""',
+            deleteRule: '',
+            fields: [
+              { name: 'nombre', type: 'text', required: true },
+              { name: 'fecha', type: 'date', required: true },
+              { name: 'snapshot', type: 'json', required: false }
+            ]
+          });
+          this.log(ok ? '  ✅ Colección "reportes_generados" creada.' : '  ❌ Error creando "reportes_generados"');
+        }
 
       this.log('');
       this.log('🎉 Sincronización completada. El sistema está listo.');
