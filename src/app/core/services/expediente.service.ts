@@ -34,22 +34,33 @@ export class ExpedienteService {
     opts?: { estadoAnterior?: string; estadoNuevo?: string; dniSolicitante?: string }
   ) {
     try {
+      // Usamos el usuario actual (puede ser el impersonado) en vez de solo el authStore (el admin real)
       const user = this.authService.currentUser();
-      if (!user) return;
+      const model = user || this.pbService.pb.authStore.model;
+      if (!model) {
+        console.warn('[HISTORY] No hay usuario para loguear accion:', accion);
+        return;
+      }
 
-      await this.pbService.pb.collection('historial_expedientes').create({
+      const payload = {
         expediente_id:   expedienteId,
         expediente_dni:  opts?.dniSolicitante || '',
-        operador_id:     user.id,
-        operador_nombre: user['nombre'] || user['username'] || 'Desconocido',
-        operador_perfil: user['perfil'] || '',
+        operador_id:     model.id || 'unknown',
+        operador_nombre: model['nombre'] || model['username'] || 'Desconocido',
+        operador_perfil: model['perfil'] || '',
         accion,
         estado_anterior: opts?.estadoAnterior || '',
         estado_nuevo:    opts?.estadoNuevo || '',
-        detalles
-      });
-    } catch (e) {
+        detalles:        detalles?.trim() || 'Log de sistema'
+      };
+      
+      console.log("[HISTORY DEBUG] Intentando guardar log:", payload);
+      await this.pbService.pb.collection('historial_acciones').create(payload);
+    } catch (e: any) {
       console.error('[HISTORY ERROR] No se pudo guardar el log:', e);
+      if (e.response) {
+        console.error('[HISTORY ERROR] Detalles de PB:', JSON.stringify(e.response, null, 2));
+      }
     }
   }
 
@@ -143,7 +154,7 @@ export class ExpedienteService {
     const record = await this.pbService.pb.collection(this.collectionName).update(id, safePayload);
     
     const detalles = `Estado: ${safePayload.estado}. Obs: ${finalObs ? finalObs.slice(0, 80) + (finalObs.length > 80 ? '…' : '') : 'Sin obs.'}`;
-    await this.logHistory(record.id, accionLog, detalles);
+    await this.logHistory(record.id, accionLog, detalles, { dniSolicitante: safePayload.dni_solicitante });
     return record;
   }
 
@@ -171,12 +182,12 @@ export class ExpedienteService {
   }
 
   /**
-   * Retrieves all dossiers that are pending delivery (ATENDIDO) for a specific location.
+   * Retrieves all dossiers that are pending delivery (VERIFICADO) for a specific location.
    */
   async getPendingDeliveries(lugar: string): Promise<RecordModel[]> {
     try {
       return await this.pbService.pb.collection('expedientes').getFullList({
-        filter: `estado = "ATENDIDO" && lugar_entrega = "${lugar}"`,
+        filter: `estado = "VERIFICADO" && lugar_entrega = "${lugar}"`,
         sort: '-fecha_registro'
       });
     } catch (error) {
@@ -277,5 +288,56 @@ export class ExpedienteService {
          }
         return [];
      }
+  }
+
+  /**
+   * Obtiene el historial de atenciones (impresiones) de un operador específico.
+   * Utiliza 'expand' para traer los datos del expediente relacionado.
+   */
+  async getMisAtenciones(operadorId: string): Promise<RecordModel[]> {
+    try {
+      const options = {
+        filter: `operador_id = "${operadorId}" && (accion = "MARCADO_RAPIDO_IMPRESO" || accion = "MARCADO_MASIVO_IMPRESO" || accion = "PROCESO_MASIVO_IMPRESOR" || accion = "EDICION_FORMULARIO")`,
+        sort: '-id'
+      };
+      const logs = await this.pbService.pb.collection('historial_acciones').getFullList(options);
+
+      // Solo consideramos los logs que verdaderamente pasaron a estado IMPRESO, si estamos incluyendo EDICION_FORMULARIO
+      const impresionesLogs = logs.filter(l => 
+        l['accion'].includes('IMPRESO') || l['estado_nuevo'] === 'IMPRESO' || 
+        (l['detalles'] && l['detalles'].includes('Estado: IMPRESO'))
+      );
+
+      if (impresionesLogs.length === 0) return [];
+
+      // 2. Obtener IDs únicos de expedientes
+      const ids = [...new Set(impresionesLogs.map(l => l['expediente_id']))].filter(id => !!id);
+      
+      // 3. Cargar expedientes por bloques (chunks de 40) para no saturar el largo del filtro (error 400)
+      const chunkSize = 40;
+      let exps: RecordModel[] = [];
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const chunkExps = await this.pbService.pb.collection('expedientes').getFullList({
+          filter: chunk.map(id => `id = "${id}"`).join(' || ')
+        });
+        exps = [...exps, ...chunkExps];
+      }
+
+      // 4. Mapear los datos del expediente al objeto "expand" del log
+      const expMap = new Map(exps.map(e => [e.id, e]));
+      
+      return impresionesLogs.map(log => {
+        const exp = expMap.get(log['expediente_id']);
+        if (exp) {
+          (log as any).expand = { expediente_id: exp };
+        }
+        return log;
+      });
+
+    } catch (error) {
+      console.error('Error fetching mis atenciones:', error);
+      return [];
+    }
   }
 }

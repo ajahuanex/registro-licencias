@@ -153,17 +153,16 @@
           <!-- Estado (Etiqueta actual) -->
           <ng-container matColumnDef="estado">
             <th mat-header-cell *matHeaderCellDef> Estado Actual </th>
-            <td mat-cell *matCellDef="let element"> 
-               <span class="status-chip" 
-                     [class.proc]="element.estado === 'EN PROCESO'"
-                     [class.aten]="element.estado === 'ATENDIDO'"
-                     [class.obs]="element.estado === 'OBSERVADO'"
-                     [class.rech]="element.estado === 'RECHAZADO'"
-                     [class.impr]="element.estado === 'IMPRESO'"
-                     [class.entr]="element.estado === 'ENTREGADO'"
-                     [class.anul]="element.estado === 'ANULADO'">
-                     {{element.estado || 'EN PROCESO'}}
-               </span>
+            <td mat-cell *matCellDef="let element">                <span class="status-chip" 
+                      [class.proc]="element.estado === 'EN PROCESO'"
+                      [class.aten]="element.estado === 'VERIFICADO'"
+                      [class.obs]="element.estado === 'OBSERVADO'"
+                      [class.rech]="element.estado === 'RECHAZADO'"
+                      [class.impr]="element.estado === 'IMPRESO'"
+                      [class.entr]="element.estado === 'ENTREGADO'"
+                      [class.anul]="element.estado === 'ANULADO'">
+                      {{element.estado || 'EN PROCESO'}}
+                </span>
             </td>
           </ng-container>
 

@@ -26,6 +26,13 @@
       <button mat-stroked-button (click)="exportPDF()">
         <mat-icon>picture_as_pdf</mat-icon> PDF
       </button>
+
+      <!-- Botón de Acción Masiva -->
+      <button mat-flat-button color="accent" (click)="marcarComoImpresoMasivo()" 
+              [disabled]="selection.selected.length === 0" *ngIf="userPerfil === 'IMPRESOR' || userPerfil === 'OTI'">
+        <mat-icon>done_all</mat-icon> Marcar {{ selection.selected.length }} como IMPRESO
+      </button>
+
       <button mat-raised-button color="primary" (click)="openModal()">
         <mat-icon>add_circle</mat-icon>
         Nuevo Expediente
@@ -33,110 +40,248 @@
     </div>
   </div>
 
-  <!-- Stat Info and Search -->
-  <div class="stat-bar" style="display: flex; gap: 1rem; align-items: center; justify-content: space-between;">
-    <span><mat-icon>assignment</mat-icon> Total del día: <strong>{{ totalRegistros }}</strong></span>
-    
-    <mat-form-field appearance="outline" subscriptSizing="dynamic" style="width: 300px;" class="no-print">
-      <mat-label>Buscar expedientes...</mat-label>
-      <input matInput (keyup)="applyFilter($event)" placeholder="Ej. Juan Perez, 7012...">
-      <mat-icon matPrefix>search</mat-icon>
-    </mat-form-field>
-  </div>
+  <!-- Tabs Selection -->
+  <mat-tab-group class="no-print" style="margin-bottom: 1rem;" [(selectedIndex)]="activeTabIndex">
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <mat-icon style="margin-right: 8px;">today</mat-icon> Expedientes del Día
+      </ng-template>
 
-  <!-- Table Card -->
-  <mat-card class="mat-elevation-z3">
-    @if (isLoading()) {
-      <div class="loading-overlay">
-        <div class="spinner"></div>
-        <span>Cargando expedientes...</span>
+      <div style="padding-top: 1rem;">
+        <!-- Stat Info and Search -->
+        <div class="stat-bar" style="display: flex; gap: 1rem; align-items: center; justify-content: space-between;">
+          <span><mat-icon>assignment</mat-icon> Total del día: <strong>{{ totalRegistros }}</strong></span>
+          
+          <div class="search-and-config no-print" style="display: flex; gap: 0.5rem; align-items: center;">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic" style="width: 260px;">
+              <mat-label>Buscar expedientes...</mat-label>
+              <input matInput (keyup)="applyFilter($event)" placeholder="Ej. Juan Perez, 7012...">
+              <mat-icon matPrefix>search</mat-icon>
+            </mat-form-field>
+
+            <button mat-icon-button [matMenuTriggerFor]="colMenu" matTooltip="Configurar Columnas">
+              <mat-icon>view_column</mat-icon>
+            </button>
+            <mat-menu #colMenu="matMenu">
+              @for(opt of columnOptions; track opt.key) {
+                <button mat-menu-item (click)="$event.stopPropagation()">
+                  <mat-checkbox [(ngModel)]="opt.visible" (change)="updateVisibleColumns()">{{ opt.label }}</mat-checkbox>
+                </button>
+              }
+            </mat-menu>
+          </div>
+        </div>
+
+        <!-- Table Card -->
+        <mat-card class="mat-elevation-z3">
+          @if (isLoading()) {
+            <div class="loading-overlay">
+              <div class="spinner"></div>
+              <span>Cargando expedientes...</span>
+            </div>
+          } @else {
+            <div class="table-container">
+              <table mat-table [dataSource]="dataSource" matSort class="full-width-table">
+
+                <!-- Checkbox Selection -->
+                <ng-container matColumnDef="select">
+                  <th mat-header-cell *matHeaderCellDef class="no-print">
+                    <mat-checkbox (change)="$event ? toggleAllRows() : null"
+                                  [checked]="selection.hasValue() && isAllSelected()"
+                                  [indeterminate]="selection.hasValue() && !isAllSelected()">
+                    </mat-checkbox>
+                  </th>
+                  <td mat-cell *matCellDef="let row" class="no-print">
+                    <mat-checkbox (click)="$event.stopPropagation()"
+                                  (change)="$event ? selection.toggle(row) : null"
+                                  [checked]="selection.isSelected(row)">
+                    </mat-checkbox>
+                  </td>
+                </ng-container>
+
+                <!-- N° -->
+                <ng-container matColumnDef="num">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header> N° </th>
+                  <td mat-cell *matCellDef="let element; let i = index"> {{ i + 1 }} </td>
+                </ng-container>
+
+                <!-- DNI Solicitante -->
+                <ng-container matColumnDef="dni_solicitante">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header> DNI Solic. </th>
+                  <td mat-cell *matCellDef="let element"> <span class="badge">{{element.dni_solicitante}}</span> </td>
+                </ng-container>
+
+                <!-- Apellidos y Nombres -->
+                <ng-container matColumnDef="apellidos_nombres">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header> Apellidos y Nombres </th>
+                  <td mat-cell *matCellDef="let element"> <strong>{{element.apellidos_nombres}}</strong> </td>
+                </ng-container>
+
+                <!-- Trámite -->
+                <ng-container matColumnDef="tramite">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header> Trámite </th>
+                  <td mat-cell *matCellDef="let element">
+                    <span class="status-chip" [class.dup]="element.tramite==='Duplicado'" [class.rev]="element.tramite==='Revalidación'">
+                      {{element.tramite}}
+                    </span>
+                  </td>
+                </ng-container>
+
+                <!-- Categoría -->
+                <ng-container matColumnDef="categoria">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header> Cat. </th>
+                  <td mat-cell *matCellDef="let element"> {{element.categoria}} </td>
+                </ng-container>
+
+                <!-- Estado -->
+                <ng-container matColumnDef="estado">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header> Estado </th>
+                  <td mat-cell *matCellDef="let element">
+                    <span class="status-chip"
+                      [class.proc]="element.estado==='EN PROCESO'"
+                      [class.aten]="element.estado==='VERIFICADO'"
+                      [class.obs]="element.estado==='OBSERVADO'"
+                      [class.rech]="element.estado==='RECHAZADO'">
+                      {{element.estado}}
+                    </span>
+                  </td>
+                </ng-container>
+
+                <!-- Lugar -->
+                <ng-container matColumnDef="lugar_entrega">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header> Lugar </th>
+                  <td mat-cell *matCellDef="let element"> {{element.lugar_entrega}} </td>
+                </ng-container>
+
+                <!-- Observaciones (OBS) -->
+                <ng-container matColumnDef="observaciones">
+                  <th mat-header-cell *matHeaderCellDef mat-sort-header> OBS </th>
+                  <td mat-cell *matCellDef="let element">
+                    @if (element.observaciones) {
+                      <mat-icon color="warn" [matTooltip]="element.observaciones" style="cursor: pointer;">
+                        feedback
+                      </mat-icon>
+                    }
+                  </td>
+                </ng-container>
+
+                <!-- Acciones -->
+                <ng-container matColumnDef="acciones">
+                  <th mat-header-cell *matHeaderCellDef class="text-right no-print"> Acciones </th>
+                  <td mat-cell *matCellDef="let element" class="text-right no-print">
+                    <!-- Switch rápido a IMPRESO (Solo para Impresor o Roles Admin) -->
+                    <button mat-icon-button color="accent" matTooltip="Marcar como IMPRESO (Rápido)" 
+                            (click)="marcarComoImpreso(element)" 
+                            *ngIf="(userPerfil === 'IMPRESOR' || userPerfil === 'OTI') && element.estado === 'EN PROCESO'">
+                      <mat-icon>print</mat-icon>
+                    </button>
+
+                    <button mat-icon-button color="primary" matTooltip="Editar" (click)="openModal(element)">
+                      <mat-icon>edit</mat-icon>
+                    </button>
+                    
+                    <button mat-icon-button color="warn" matTooltip="Eliminar" 
+                            (click)="deleteExpediente(element.id)" 
+                            *ngIf="userPerfil !== 'IMPRESOR'">
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  </td>
+                </ng-container>
+
+                <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true"></tr>
+                <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="table-row-hover"></tr>
+
+                <tr class="mat-row" *matNoDataRow>
+                  <td class="mat-cell empty-cell" [attr.colspan]="displayedColumns.length">
+                    <mat-icon>inbox</mat-icon>
+                    <p>No se encontraron expedientes para este filtro/fecha.</p>
+                  </td>
+                </tr>
+
+              </table>
+            </div>
+            <mat-paginator [pageSizeOptions]="[10, 25, 50, 100]" pageSize="10" showFirstLastButtons></mat-paginator>
+          }
+        </mat-card>
       </div>
-    } @else {
-      <div class="table-container">
-        <table mat-table [dataSource]="dataSource" matSort class="full-width-table">
+    </mat-tab>
 
-          <!-- N° -->
-          <ng-container matColumnDef="num">
-            <th mat-header-cell *matHeaderCellDef mat-sort-header> N° </th>
-            <td mat-cell *matCellDef="let element; let i = index"> {{ i + 1 }} </td>
-          </ng-container>
+    <!-- Tab Mis Atenciones -->
+    <mat-tab>
+      <ng-template mat-tab-label>
+        <mat-icon style="margin-right: 8px;">history</mat-icon> Mis Atenciones (Historial)
+      </ng-template>
 
-          <!-- DNI Solicitante -->
-          <ng-container matColumnDef="dni_solicitante">
-            <th mat-header-cell *matHeaderCellDef mat-sort-header> DNI Solic. </th>
-            <td mat-cell *matCellDef="let element"> <span class="badge">{{element.dni_solicitante}}</span> </td>
-          </ng-container>
+      <div style="padding-top: 1rem;">
+        <div class="stat-bar" style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+          <span><mat-icon>history_edu</mat-icon> Total procesados por ti (Histórico): <strong>{{ atencionesDataSource.data.length }}</strong></span>
+          <button mat-button color="primary" (click)="loadAtenciones()">
+            <mat-icon>refresh</mat-icon> Refrescar historial
+          </button>
+        </div>
 
-          <!-- Apellidos y Nombres -->
-          <ng-container matColumnDef="apellidos_nombres">
-            <th mat-header-cell *matHeaderCellDef mat-sort-header> Apellidos y Nombres </th>
-            <td mat-cell *matCellDef="let element"> <strong>{{element.apellidos_nombres}}</strong> </td>
-          </ng-container>
+        <mat-card class="mat-elevation-z3">
+          <div class="table-container">
+            <table mat-table [dataSource]="atencionesDataSource" #atencionesSort="matSort" matSort class="full-width-table">
+              
+              <ng-container matColumnDef="num">
+                <th mat-header-cell *matHeaderCellDef> N° </th>
+                <td mat-cell *matCellDef="let element; let i = index"> {{ i + 1 }} </td>
+              </ng-container>
 
-          <!-- Trámite -->
-          <ng-container matColumnDef="tramite">
-            <th mat-header-cell *matHeaderCellDef mat-sort-header> Trámite </th>
-            <td mat-cell *matCellDef="let element">
-              <span class="status-chip" [class.dup]="element.tramite==='Duplicado'" [class.rev]="element.tramite==='Revalidación'">
-                {{element.tramite}}
-              </span>
-            </td>
-          </ng-container>
+              <ng-container matColumnDef="fecha">
+                <th mat-header-cell *matHeaderCellDef mat-sort-header> Fecha/Hora </th>
+                <td mat-cell *matCellDef="let element"> {{ element.created | date:'dd/MM/yyyy HH:mm' }} </td>
+              </ng-container>
 
-          <!-- Categoría -->
-          <ng-container matColumnDef="categoria">
-            <th mat-header-cell *matHeaderCellDef mat-sort-header> Cat. </th>
-            <td mat-cell *matCellDef="let element"> {{element.categoria}} </td>
-          </ng-container>
+              <ng-container matColumnDef="dni">
+                <th mat-header-cell *matHeaderCellDef> DNI </th>
+                <td mat-cell *matCellDef="let element"> <span class="badge">{{ element.expediente_dni }}</span> </td>
+              </ng-container>
 
-          <!-- Estado -->
-          <ng-container matColumnDef="estado">
-            <th mat-header-cell *matHeaderCellDef mat-sort-header> Estado </th>
-            <td mat-cell *matCellDef="let element">
-              <span class="status-chip"
-                [class.proc]="element.estado==='EN PROCESO'"
-                [class.aten]="element.estado==='ATENDIDO'"
-                [class.obs]="element.estado==='OBSERVADO'"
-                [class.rech]="element.estado==='RECHAZADO'">
-                {{element.estado}}
-              </span>
-            </td>
-          </ng-container>
+              <ng-container matColumnDef="nombre">
+                <th mat-header-cell *matHeaderCellDef> Expediente </th>
+                <td mat-cell *matCellDef="let element"> 
+                  <strong>{{ element.expand?.expediente_id?.apellidos_nombres || 'Cargando/Eliminado' }}</strong>
+                </td>
+              </ng-container>
 
-          <!-- Lugar -->
-          <ng-container matColumnDef="lugar_entrega">
-            <th mat-header-cell *matHeaderCellDef mat-sort-header> Lugar </th>
-            <td mat-cell *matCellDef="let element"> {{element.lugar_entrega}} </td>
-          </ng-container>
+              <ng-container matColumnDef="tramite">
+                <th mat-header-cell *matHeaderCellDef> Trámite </th>
+                <td mat-cell *matCellDef="let element"> {{ element.expand?.expediente_id?.tramite }} </td>
+              </ng-container>
 
-          <!-- Acciones -->
-          <ng-container matColumnDef="acciones">
-            <th mat-header-cell *matHeaderCellDef class="text-right no-print"> Acciones </th>
-            <td mat-cell *matCellDef="let element" class="text-right no-print">
-              <button mat-icon-button color="primary" matTooltip="Editar" (click)="openModal(element)">
-                <mat-icon>edit</mat-icon>
-              </button>
-              <button mat-icon-button color="warn" matTooltip="Eliminar" (click)="deleteExpediente(element.id)">
-                <mat-icon>delete</mat-icon>
-              </button>
-            </td>
-          </ng-container>
+              <ng-container matColumnDef="estado">
+                <th mat-header-cell *matHeaderCellDef> Estado </th>
+                <td mat-cell *matCellDef="let element">
+                  <span class="status-chip aten">IMPRESO</span>
+                </td>
+              </ng-container>
 
-          <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true"></tr>
-          <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="table-row-hover"></tr>
+              <ng-container matColumnDef="ver">
+                <th mat-header-cell *matHeaderCellDef class="text-right"> Acciones </th>
+                <td mat-cell *matCellDef="let element" class="text-right">
+                  <button mat-icon-button color="primary" (click)="openModal(element.expand?.expediente_id)" matTooltip="Ver detalles" [disabled]="!element.expand?.expediente_id">
+                    <mat-icon>visibility</mat-icon>
+                  </button>
+                </td>
+              </ng-container>
 
-          <tr class="mat-row" *matNoDataRow>
-            <td class="mat-cell empty-cell" [attr.colspan]="displayedColumns.length">
-              <mat-icon>inbox</mat-icon>
-              <p>Aún no tienes expedientes registrados hoy.</p>
-              <button mat-raised-button color="primary" (click)="openModal()">Registrar Primer Expediente</button>
-            </td>
-          </tr>
+              <tr mat-header-row *matHeaderRowDef="atencionesColumns"></tr>
+              <tr mat-row *matRowDef="let row; columns: atencionesColumns;"></tr>
 
-        </table>
+              <tr class="mat-row" *matNoDataRow>
+                <td class="mat-cell empty-cell" [attr.colspan]="atencionesColumns.length">
+                  <mat-icon>history</mat-icon>
+                  <p>Aún no has registrado atenciones históricas.</p>
+                </td>
+              </tr>
+            </table>
+          </div>
+          <mat-paginator #atencionesPaginator [pageSizeOptions]="[10, 20, 50, 100]" pageSize="10" showFirstLastButtons></mat-paginator>
+        </mat-card>
       </div>
-      <mat-paginator [pageSizeOptions]="[10, 25, 50, 100]" pageSize="10" showFirstLastButtons></mat-paginator>
-    }
-  </mat-card>
+    </mat-tab>
+  </mat-tab-group>
 
 </div>

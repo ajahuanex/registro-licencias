@@ -12,6 +12,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { PocketbaseService } from '../core/services/pocketbase.service';
+import { ExpedienteService } from '../core/services/expediente.service';
 import { ESTADOS_SISTEMA, PERFILES_SISTEMA } from '../core/constants/app.constants';
 
 // ─── Sync Modal ───────────────────────────────────────────────────────────────
@@ -103,6 +104,13 @@ export class AdminAuthModal {
         if (!r.ok) { this.log(`  ⚠ PATCH /${name}: ${await r.text()}`); }
         return r.ok;
       };
+      const createCol = async (body: any) => {
+        const r = await doFetch(`/api/collections`, {
+          method: 'POST', authToken: token, body: JSON.stringify(body)
+        });
+        if (!r.ok) { this.log(`  ❌ Error creando colección: ${await r.text()}`); }
+        return r.ok;
+      };
 
       // ── 2. expedientes ────────────────────────────────────────────────────
       this.log('');
@@ -133,6 +141,22 @@ export class AdminAuthModal {
         } else {
           this.log('  ✅ "expedientes.celular" — existe.');
         }
+
+        // new verification checks
+        const newChecks = ['reviso_sanciones'];
+        let updatedExp = false;
+        for (const check of newChecks) {
+          if (!expCol.fields?.some((f: any) => f.name === check)) {
+            expCol.fields.push({ name: check, type: 'bool', required: false });
+            updatedExp = true;
+          }
+        }
+        if (updatedExp) {
+          const ok = await patchCol('expedientes', { fields: expCol.fields });
+          this.log(ok ? '  ✅ Campos de verificación añadidos.' : '  ❌ Error añadiendo verificaciones');
+        } else {
+          this.log('  ✅ Campos de verificación — existen.');
+        }
       } else { this.log('  ❌ Colección "expedientes" no encontrada.'); }
 
       // ── 3. operadores.perfil ──────────────────────────────────────────────
@@ -157,22 +181,22 @@ export class AdminAuthModal {
         this.log('  ✅ Reglas de acceso verificadas.');
       } else { this.log('  ❌ Colección "operadores" no encontrada.'); }
 
-      // ── 4. historial_expedientes ──────────────────────────────────────────
-      this.log('⏳ [3/4] Verificando "historial_expedientes"...');
-      const histCol = await getCol('historial_expedientes');
+      // ── 4. historial_acciones ──────────────────────────────────────────
+      this.log('⏳ [3/4] Verificando "historial_acciones"...');
+      const histCol = await getCol('historial_acciones');
       if (histCol) {
-        const fieldNames = histCol.fields?.map((f: any) => f.name) || [];
-        const required = [
-          'created', 'updated', 'expediente_id', 'expediente_dni',
-          'operador_id', 'operador_nombre', 'operador_perfil',
-          'accion', 'estado_anterior', 'estado_nuevo', 'detalles'
-        ];
-        const missingFields = required.filter(f => !fieldNames.includes(f));
-        if (missingFields.length) {
-          const newFields = [
-            ...(histCol.fields || []).filter((f: any) => !required.includes(f.name)),
-            { name: "created",          type: "autodate", hidden: false, required: false, id: "datecreated", system: true, onCreate: true, onUpdate: false },
-            { name: "updated",          type: "autodate", hidden: false, required: false, id: "dateupdated", system: true, onCreate: true, onUpdate: true },
+        this.log('  ✅ "historial_acciones" — existe.');
+      } else { 
+        this.log('  ⏳ Creando "historial_acciones" desde cero...');
+        const ok = await createCol({
+          name: "historial_acciones",
+          type: "base",
+          system: false,
+          listRule: "@request.auth.id != ''",
+          viewRule: "@request.auth.id != ''",
+          createRule: "@request.auth.id != ''",
+          updateRule: "", deleteRule: "",
+          fields: [
             { name: "expediente_id",    type: "text",     required: true  },
             { name: "expediente_dni",   type: "text",     required: false },
             { name: "operador_id",      type: "text",     required: true  },
@@ -182,21 +206,9 @@ export class AdminAuthModal {
             { name: "estado_anterior",  type: "text",     required: false },
             { name: "estado_nuevo",     type: "text",     required: false },
             { name: "detalles",         type: "text",     required: false }
-          ];
-          const ok = await patchCol('historial_expedientes', {
-            fields: newFields,
-            listRule: "@request.auth.id != ''",
-            viewRule: "@request.auth.id != ''",
-            createRule: "@request.auth.id != ''"
-          });
-          this.log(ok
-            ? `  ✅ Campos añadidos/corregidos: ${missingFields.join(', ')}`
-            : '  ❌ Error actualizando historial_expedientes');
-        } else {
-          this.log('  ✅ "historial_expedientes" — completo.');
-        }
-      } else {
-        this.log('  ❌ "historial_expedientes" no existe. Créala en PocketBase y vuelve a sincronizar.');
+          ]
+        });
+        this.log(ok ? '  ✅ "historial_acciones" creada exitosamente.' : '  ❌ Fallo al crear historial_acciones.');
       }
 
       // ── 5. reportes_generados ─────────────────────────────────────────────
@@ -255,7 +267,7 @@ export class AdminAuthModal {
         <p>Actualiza automáticamente:</p>
         <ul>
           <li><code>expedientes</code> — estado <strong>IMPRESO</strong> + campo <strong>celular</strong></li>
-          <li><code>operadores.perfil</code> — añade <strong>SUP_IMPRESION, SUP_CALIDAD, REGISTRADOR…</strong></li>
+          <li><code>operadores.perfil</code> — añade <strong>IMPRESOR, REGISTRADOR…</strong></li>
           <li><code>historial_expedientes</code> — define todos los campos de auditoría</li>
           <li><code>reportes_generados</code> — campo <strong>snapshot</strong> + acceso público QR</li>
         </ul>
@@ -276,13 +288,13 @@ export class AdminAuthModal {
       </mat-card-header>
       <mat-card-content>
         <div class="flow-list">
-          <div class="flow-item"><span class="badge proc">EN PROCESO</span><span>Registrador ingresa el expediente</span></div>
-          <div class="flow-item"><span class="badge impr">IMPRESO</span><span>Sup. Impresión imprime la licencia física</span></div>
-          <div class="flow-item"><span class="badge aten">ATENDIDO</span><span>Sup. Calidad verifica y aprueba para entrega</span></div>
-          <div class="flow-item"><span class="badge entr">ENTREGADO</span><span>Entregador confirma entrega al conductor</span></div>
-          <div class="flow-item"><span class="badge obs">OBSERVADO</span><span>Se requiere corrección de datos o documentos</span></div>
-          <div class="flow-item"><span class="badge rech">RECHAZADO</span><span>No procede el trámite</span></div>
-          <div class="flow-item"><span class="badge anul">ANULADO</span><span>Cancelado por Supervisor / OTI</span></div>
+          <div class="flow-item"><span class="badge proc">EN PROCESO</span><span>Registrador / Operador ingresa el expediente</span></div>
+          <div class="flow-item"><span class="badge impr">IMPRESO</span><span>El <strong>Impresor</strong> genera la licencia física</span></div>
+          <div class="flow-item"><span class="badge aten">VERIFICADO</span><span>El <strong>Supervisor</strong> realiza el control de calidad</span></div>
+          <div class="flow-item"><span class="badge entr">ENTREGADO</span><span>El <strong>Entregador</strong> confirma la entrega al usuario</span></div>
+          <div class="flow-item"><span class="badge obs">OBSERVADO</span><span>Se requiere corrección o subsanación de datos</span></div>
+          <div class="flow-item"><span class="badge rech">RECHAZADO</span><span>El trámite no procede (Incumplimiento)</span></div>
+          <div class="flow-item"><span class="badge anul">ANULADO</span><span>Documento invalidado por Supervisor / OTI</span></div>
         </div>
       </mat-card-content>
     </mat-card>
@@ -298,29 +310,38 @@ export class AdminAuthModal {
         <table class="perfiles-table">
           <tr><th>Perfil</th><th>Estados disponibles</th></tr>
           <tr><td><code>REGISTRADOR / OPERADOR</code></td><td>EN PROCESO · OBSERVADO · RECHAZADO</td></tr>
-          <tr><td><code>SUP_IMPRESION</code></td><td>IMPRESO · OBSERVADO · RECHAZADO</td></tr>
-          <tr><td><code>SUP_CALIDAD</code></td><td>ATENDIDO · OBSERVADO · RECHAZADO</td></tr>
-          <tr><td><code>ENTREGADOR</code></td><td>ENTREGADO</td></tr>
-          <tr><td><code>SUPERVISOR</code></td><td>EN PROCESO · IMPRESO · ATENDIDO · OBSERVADO · RECHAZADO · ANULADO</td></tr>
-          <tr><td><code>ADMINISTRADOR</code></td><td>Todos los estados</td></tr>
-          <tr><td><code>OTI</code></td><td>Todos + Configuraciones globales del sistema</td></tr>
+          <tr><td><code>IMPRESOR</code></td><td>IMPRESO · OBSERVADO · EN PROCESO</td></tr>
+          <tr><td><code>ENTREGADOR</code></td><td>ENTREGADO · OBSERVADO</td></tr>
+          <tr><td><code>SUPERVISOR</code></td><td>VERIFICADO · OBSERVADO · RECHAZADO · ANULADO · EN PROCESO</td></tr>
+          <tr><td><code>ADMINISTRADOR</code></td><td>Todos los estados (Gestión operativa)</td></tr>
+          <tr><td><code>OTI</code></td><td>Todos los estados + Configuración del sistema</td></tr>
         </table>
-      </mat-card-content>
-    </mat-card>
-
-    <!-- Card 4: Auditoría -->
-    <mat-card class="settings-card mat-elevation-z3">
-      <mat-card-header>
-        <mat-icon mat-card-avatar color="primary">history</mat-icon>
-        <mat-card-title>Auditoría Global (Logs)</mat-card-title>
-        <mat-card-subtitle>Ver todos los eventos registrados en el sistema</mat-card-subtitle>
-      </mat-card-header>
-      <mat-card-content>
-        <p>Inspeccione el historial completo de operaciones: quién modificó qué expediente, cuándo y desde qué perfil.</p>
       </mat-card-content>
       <mat-card-actions align="end">
         <button mat-stroked-button color="primary" routerLink="/auditoria">
           <mat-icon>launch</mat-icon> Abrir Visor de Auditoría
+        </button>
+      </mat-card-actions>
+    </mat-card>
+
+    <!-- Card 5: Cierre de Día (Automatismo 23:55) -->
+    <mat-card class="settings-card mat-elevation-z3 primary-card">
+      <mat-card-header>
+        <mat-icon mat-card-avatar color="primary">access_time</mat-icon>
+        <mat-card-title>Cierre Administrativo Diario</mat-card-title>
+        <mat-card-subtitle>Migración masiva de ENTREGADO a ATENDIDO</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <p>Proceso automático configurado para las 23:55 de cada día (simulado mediante este botón para OTI).</p>
+        <div style="background:#f1f5f9;padding:12px;border-radius:8px;font-size:0.85rem;margin-top:8px;">
+           <mat-icon inline style="vertical-align:middle;font-size:16px;">info</mat-icon> 
+           Al ejecutar, todos los expedientes en estado <strong>ENTREGADO</strong> pasarán a estado <strong>ATENDIDO</strong> y quedarán archivados.
+        </div>
+      </mat-card-content>
+      <mat-card-actions align="end">
+        <button mat-flat-button color="primary" (click)="ejecutarCierreMasivo()" [disabled]="processingCierre()">
+          <mat-icon>{{ processingCierre() ? 'hourglass_empty' : 'send' }}</mat-icon>
+          {{ processingCierre() ? 'Procesando...' : 'Ejecutar Cierre Masivo' }}
         </button>
       </mat-card-actions>
     </mat-card>
@@ -354,8 +375,51 @@ export class AdminAuthModal {
 export class ConfiguracionesComponent {
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
+  private pbService = inject(PocketbaseService);
+  private expedienteService = inject(ExpedienteService);
+
+  processingCierre = signal(false);
 
   openInitModal() {
     this.dialog.open(AdminAuthModal, { width: '750px', maxWidth: '95vw', disableClose: true });
+  }
+
+  async ejecutarCierreMasivo() {
+    if (!confirm('¿Está seguro de ejecutar el cierre administrativo? Todos los expedientes ENTREGADO pasarán a ATENDIDO.')) return;
+    
+    this.processingCierre.set(true);
+    try {
+      // Fetch all DELIVERED records
+      const records = await this.pbService.pb.collection('expedientes').getFullList({
+        filter: 'estado = "ENTREGADO"'
+      });
+
+      if (records.length === 0) {
+        this.snackBar.open('No hay expedientes en estado ENTREGADO para cerrar.', 'Cerrar', { duration: 3000 });
+        this.processingCierre.set(false);
+        return;
+      }
+
+      this.snackBar.open(`Cerrando ${records.length} expedientes...`, 'Ok', { duration: 2000 });
+
+      let count = 0;
+      for (const r of records) {
+        await this.expedienteService.updateExpediente(r.id, 
+          { estado: 'ATENDIDO' }, 
+          'CIERRE_AUTOMATICO_SISTEMA',
+          '[CIERRE DIARIO AUTOMÁTICO 23:55]'
+        );
+        count++;
+      }
+
+      this.snackBar.open(`🎉 Cierre exitoso: ${count} expedientes pasaron a estado ATENDIDO.`, 'Cerrar', { 
+        duration: 5000, 
+        panelClass: ['success-snackbar'] 
+      });
+    } catch (e: any) {
+      this.snackBar.open('Error en el cierre masivo: ' + e.message, 'Cerrar', { duration: 4000 });
+    } finally {
+      this.processingCierre.set(false);
+    }
   }
 }

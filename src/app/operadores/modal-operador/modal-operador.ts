@@ -11,6 +11,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { PERFILES_SISTEMA } from '../../core/constants/app.constants';
 
 export const passwordMatchValidator: ValidatorFn = (control: AbstractControl): ValidationErrors | null => {
   const password = control.get('password')?.value;
@@ -47,7 +48,7 @@ export class ModalOperador {
   isLoading = signal<boolean>(false);
   hidePassword = signal<boolean>(true);
 
-  perfiles = ['OTI', 'ADMINISTRADOR', 'SUPERVISOR', 'REGISTRADOR', 'ENTREGADOR'];
+  perfiles = [...PERFILES_SISTEMA];
 
   form = this.fb.group({
     dni: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],

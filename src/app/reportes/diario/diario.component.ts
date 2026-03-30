@@ -367,14 +367,28 @@ export class DiarioComponent implements OnInit {
     if (record['estado'] === nuevoEstado) return;
     
     let obsToAppend: string | undefined = undefined;
+    
+    // CASO 1: OBSERVADO (Cualquier rol)
     if (nuevoEstado === 'OBSERVADO') {
-       const obs = prompt('Ingrese el motivo de observación:');
+       const obs = prompt('Ingrese el motivo de observación / por qué no se entrega:');
        if (!obs || obs.trim().length < 5) {
          this.snackBar.open('Debe ingresar un motivo válido (min 5 caracteres).', 'Cerrar', { duration: 3000 });
          this.loadData();
          return;
        }
        obsToAppend = obs.trim();
+    }
+
+    // CASO 2: RETORNO A COLA (Supervisor/Impresor enviando a EN PROCESO)
+    const isReturning = (record['estado'] === 'IMPRESO' || record['estado'] === 'VERIFICADO') && nuevoEstado === 'EN PROCESO';
+    if (isReturning) {
+       const obs = prompt('DETALLE DEL ERROR: Especifique qué debe corregirse en la impresión:');
+       if (!obs || obs.trim().length < 5) {
+         this.snackBar.open('Debe indicar la razón del retorno a cola de impresión.', 'Cerrar', { duration: 3000 });
+         this.loadData();
+         return;
+       }
+       obsToAppend = `[RETORNO A COLA]: ${obs.trim()}`;
     }
 
     this.isLoading.set(true);
