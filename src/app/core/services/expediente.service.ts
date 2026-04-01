@@ -158,6 +158,11 @@ export class ExpedienteService {
     return record;
   }
 
+  private toPbDate(date: Date): string {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+           `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
 
   /**
    * Checks if an exact same name was registered on the target date string (YYYY-MM-DD prefix).
@@ -169,13 +174,15 @@ export class ExpedienteService {
       const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
       const end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
       
+      const filterStr = `apellidos_nombres = '${apellidosNombres}' && fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
+
       const records = await this.pbService.pb.collection(this.collectionName).getList(1, 1, {
-        filter: `apellidos_nombres = "${apellidosNombres}" && fecha_registro >= "${start.toISOString().replace('T', ' ')}" && fecha_registro <= "${end.toISOString().replace('T', ' ')}"`
+        filter: filterStr
       });
 
       return records.totalItems > 0;
     } catch (error) {
-       console.error("Duplicate Check Error:", error);
+       console.error('Duplicate Check Error:', error);
        // Fail closed: assume duplicate if there's an error avoiding multiple insertions.
        return true; 
     }
@@ -187,8 +194,7 @@ export class ExpedienteService {
   async getPendingDeliveries(lugar: string): Promise<RecordModel[]> {
     try {
       return await this.pbService.pb.collection('expedientes').getFullList({
-        filter: `estado = "VERIFICADO" && lugar_entrega = "${lugar}"`,
-        sort: '-fecha_registro'
+        filter: `estado = 'VERIFICADO' && lugar_entrega = '${lugar}'`
       });
     } catch (error) {
       console.error('Error fetching pending deliveries:', error);
@@ -205,17 +211,13 @@ export class ExpedienteService {
       const start = new Date(year, month - 1, day, 0, 0, 0, 0);
       const end = new Date(year, month - 1, day, 23, 59, 59, 999);
 
-      const filterStr = `estado = "ENTREGADO" && lugar_entrega = "${lugar}" && updated >= "${start.toISOString().replace('T', ' ')}" && updated <= "${end.toISOString().replace('T', ' ')}"`;
+      const filterStr = `estado = 'ENTREGADO' && lugar_entrega = '${lugar}' && updated >= '${this.toPbDate(start)}' && updated <= '${this.toPbDate(end)}'`;
 
       return await this.pbService.pb.collection('expedientes').getFullList({
-        filter: filterStr,
-        sort: '-updated'
+        filter: filterStr
       });
     } catch (error: any) {
       console.error('Error fetching daily deliveries:', error);
-      if (error.response) {
-        console.error('PB Error Data:', JSON.stringify(error.response, null, 2));
-      }
       return [];
     }
   }
@@ -231,11 +233,10 @@ export class ExpedienteService {
     perPage: number = 20
   ): Promise<{ items: RecordModel[], totalItems: number }> {
     try {
-      const filterStr = `estado = "ENTREGADO" && lugar_entrega = "${lugar}" && updated >= "${start.toISOString().replace('T', ' ')}" && updated <= "${end.toISOString().replace('T', ' ')}"`;
+      const filterStr = `estado = 'ENTREGADO' && lugar_entrega = '${lugar}' && updated >= '${this.toPbDate(start)}' && updated <= '${this.toPbDate(end)}'`;
 
       const result = await this.pbService.pb.collection(this.collectionName).getList(page, perPage, {
-        filter: filterStr,
-        sort: '-updated'
+        filter: filterStr
       });
 
       return {
@@ -250,9 +251,7 @@ export class ExpedienteService {
 
   async getGlobalHistory(): Promise<RecordModel[]> {
     try {
-      return await this.pbService.pb.collection('historial_expedientes').getFullList({
-        sort: '-created'
-      });
+      return await this.pbService.pb.collection('historial_expedientes').getFullList();
     } catch (error) {
       console.error('Error fetching global history:', error);
       throw error;
@@ -268,13 +267,12 @@ export class ExpedienteService {
        const start = new Date(year, month - 1, day, 0, 0, 0, 0);
        const end = new Date(year, month - 1, day, 23, 59, 59, 999);
 
-       let filterStr = `fecha_registro >= "${start.toISOString().replace('T', ' ')}" && fecha_registro <= "${end.toISOString().replace('T', ' ')}"`;
+       let filterStr = `fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
        if (operadorId) {
-         filterStr += ` && operador = "${operadorId}"`;
+         filterStr += ` && operador = '${operadorId}'`;
        }
        const queryOpts = {
          filter: filterStr,
-         sort: '-fecha_registro',
          expand: 'operador'
        };
        console.log("[EXPEDIENTES DEBUG] Ejecutando getFullList con opciones:", queryOpts);
@@ -297,8 +295,7 @@ export class ExpedienteService {
   async getMisAtenciones(operadorId: string): Promise<RecordModel[]> {
     try {
       const options = {
-        filter: `operador_id = "${operadorId}" && (accion = "MARCADO_RAPIDO_IMPRESO" || accion = "MARCADO_MASIVO_IMPRESO" || accion = "PROCESO_MASIVO_IMPRESOR" || accion = "EDICION_FORMULARIO")`,
-        sort: '-id'
+        filter: `operador_id = '${operadorId}' && (accion = 'MARCADO_RAPIDO_IMPRESO' || accion = 'MARCADO_MASIVO_IMPRESO' || accion = 'PROCESO_MASIVO_IMPRESOR' || accion = 'EDICION_FORMULARIO')`
       };
       const logs = await this.pbService.pb.collection('historial_acciones').getFullList(options);
 

@@ -19,9 +19,8 @@ export class OperadorService {
   private pbService = inject(PocketbaseService);
 
   async getOperadores(): Promise<RecordModel[]> {
-    return await this.pbService.pb.collection('operadores').getFullList({
-      sort: 'nombre'
-    });
+    console.log("[DEBUG] getOperadores sin ordenamiento...");
+    return await this.pbService.pb.collection('operadores').getFullList();
   }
 
   async createOperador(data: OperadorData): Promise<RecordModel> {

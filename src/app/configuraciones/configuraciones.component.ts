@@ -13,7 +13,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { PocketbaseService } from '../core/services/pocketbase.service';
 import { ExpedienteService } from '../core/services/expediente.service';
-import { ESTADOS_SISTEMA, PERFILES_SISTEMA } from '../core/constants/app.constants';
+import { ESTADOS_SISTEMA, PERFILES_SISTEMA, SEDES_SISTEMA } from '../core/constants/app.constants';
 
 // ─── Sync Modal ───────────────────────────────────────────────────────────────
 @Component({
@@ -43,14 +43,28 @@ import { ESTADOS_SISTEMA, PERFILES_SISTEMA } from '../core/constants/app.constan
           @for (log of logs(); track $index) { <div>> {{ log }}</div> }
         </div>
       }
-      @if (isRunning()) {
-        <mat-progress-bar mode="indeterminate" style="margin-top:10px;"></mat-progress-bar>
+      @if (backupReady()) {
+        <div style="margin-top:16px; padding:16px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; text-align:center;">
+          <p style="margin:0 0 12px; font-weight:600; color:#0369a1;">✅ ¡Respaldo solicitado con éxito!</p>
+          <p style="font-size:0.82rem; color:#666; margin-bottom:12px;">
+            Por seguridad y rendimiento, descarga el archivo directamente desde la interfaz oficial de PocketBase.
+          </p>
+          <button mat-stroked-button color="primary" (click)="abrirPanelAdmin()">
+            <mat-icon>launch</mat-icon> IR AL PANEL ADMINISTRATIVO (PUERTO 8095)
+          </button>
+        </div>
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close [disabled]="isRunning()">Cerrar</button>
-      <button mat-flat-button color="warn" [disabled]="form.invalid || isRunning()" (click)="iniciarSync()">
+      <button mat-flat-button color="accent" [disabled]="form.invalid || isRunning()" (click)="generarBackup()">
+        <mat-icon>backup</mat-icon> Respaldar BD
+      </button>
+      <button mat-flat-button color="warn" [disabled]="form.invalid || isRunning()" (click)="iniciarSync()" style="margin-left:8px;">
         <mat-icon>sync</mat-icon> Sincronizar
+      </button>
+      <button mat-flat-button color="primary" [disabled]="isRunning()" (click)="resetAll()" style="margin-left:8px;">
+        <mat-icon>restart_alt</mat-icon> Resetear Base de Datos
       </button>
     </mat-dialog-actions>
   `
@@ -58,245 +72,372 @@ import { ESTADOS_SISTEMA, PERFILES_SISTEMA } from '../core/constants/app.constan
 export class AdminAuthModal {
   private fb = inject(FormBuilder);
   private pbService = inject(PocketbaseService);
+  private snackBar = inject(MatSnackBar);
 
   form = this.fb.group({
     email: ['', [Validators.required, Validators.email]],
     password: ['', Validators.required]
   });
-  logs = signal<string[]>([]);
   isRunning = signal(false);
+  backupReady = signal(false);
+  logs = signal<string[]>([]);
 
   private log(msg: string) { this.logs.update(l => [...l, msg]); }
 
   async iniciarSync() {
+    // Sync logic (moved from later in file)
     if (this.form.invalid) return;
     this.isRunning.set(true);
     this.logs.set([]);
     const { email, password } = this.form.value;
-    // Use pb.baseURL so the proxy path is included (works for phone + PC)
+    // Use pb.baseURL for proxy compatibility
     const pbUrl = this.pbService.pb.baseURL;
-
     const doFetch = async (path: string, opts: any = {}) => {
       const { authToken, ...fetchOpts } = opts;
       const headers: any = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
       return fetch(pbUrl + path, { ...fetchOpts, headers: { ...headers, ...(fetchOpts.headers || {}) } });
     };
+    // Authenticate super admin
+    this.log('🔐 Autenticando como Super Admin...');
+    const authRes = await doFetch('/api/collections/_superusers/auth-with-password', {
+      method: 'POST',
+      body: JSON.stringify({ identity: email, password })
+    });
+    if (!authRes.ok) throw new Error('Credenciales inválidas — verifica email y contraseña del admin PocketBase.');
+    const { token } = await authRes.json();
+    this.log('✅ Autenticado correctamente.');
 
-    try {
-      // 1. Auth via _superusers (PocketBase v0.23+)
-      this.log('🔐 Autenticando como Super Admin...');
-      const authRes = await doFetch('/api/collections/_superusers/auth-with-password', {
-        method: 'POST', body: JSON.stringify({ identity: email, password })
+    // Admin endpoints
+    const getCol = async (name: string) => {
+      // Intentar listar para obtener el ID real (más seguro en v0.23)
+      const r = await doFetch(`/api/collections?filter=name='${name}'`, { authToken: token });
+      if (r.ok) {
+        const data = await r.json();
+        return data.items && data.items.length > 0 ? data.items[0] : null;
+      }
+      return null;
+    };
+
+    const patchCol = async (idOrName: string, body: any) => {
+      const r = await doFetch(`/api/collections/${idOrName}`, {
+        method: 'PATCH', authToken: token, body: JSON.stringify(body)
       });
-      if (!authRes.ok) throw new Error('Credenciales inválidas — verifica email y contraseña del admin PocketBase.');
-      const { token } = await authRes.json();
-      this.log('✅ Autenticado correctamente.');
+      if (!r.ok) {
+        const err = await r.text();
+        this.log(`  ⚠ Error PATCH ${idOrName}: ${err}`);
+      }
+      return r.ok;
+    };
 
-      const getCol = async (name: string) => {
-        const r = await doFetch(`/api/collections/${name}`, { authToken: token });
-        return r.ok ? r.json() : null;
-      };
-      const patchCol = async (name: string, body: any) => {
-        const r = await doFetch(`/api/collections/${name}`, {
-          method: 'PATCH', authToken: token, body: JSON.stringify(body)
+    const createCol = async (body: any) => {
+      const r = await doFetch(`/api/collections`, {
+        method: 'POST', authToken: token, body: JSON.stringify(body)
+      });
+      if (!r.ok) { 
+        const errorText = await r.text();
+        this.log(`  ⚠ POST /collections: ${errorText}`); 
+      }
+      return r.ok;
+    };
+
+    const expCol = await getCol('expedientes');
+    const opColActual = await getCol('operadores');
+    
+    // IDs reales (fallback a nombres si no se encuentran)
+    const expId = expCol?.id || 'expedientes';
+    const opId = opColActual?.id || 'operadores';
+
+    // ── 1. expedientes ──────────────────────────────────────────────────
+    this.log('');
+    this.log('⏳ [1/4] Verificando "expedientes"...');
+    if (expCol) {
+      this.log('  ⏳ Auditando integridad...');
+      let fields = [...expCol.fields];
+      let needsUpdate = false;
+
+      // operador: text -> relation (v0.23 safe rename)
+      const opField = fields.find((f: any) => f.name === 'operador');
+      if (opField && opField.type !== 'relation') {
+        this.log('  ⚠️ Migrando campo "operador" a relación...');
+        opField.name = 'operador_legacy';
+        fields.push({ 
+          name: 'operador', type: 'relation', required: true, 
+          options: { collectionId: opId, maxSelect: 1, minSelect: 0, cascadeDelete: false } 
         });
-        if (!r.ok) { this.log(`  ⚠ PATCH /${name}: ${await r.text()}`); }
-        return r.ok;
-      };
-      const createCol = async (body: any) => {
-        const r = await doFetch(`/api/collections`, {
-          method: 'POST', authToken: token, body: JSON.stringify(body)
-        });
-        if (!r.ok) { this.log(`  ❌ Error creando colección: ${await r.text()}`); }
-        return r.ok;
-      };
-
-      // ── 2. expedientes ────────────────────────────────────────────────────
-      this.log('');
-      this.log('⏳ [1/4] Verificando "expedientes"...');
-      const expCol = await getCol('expedientes');
-      if (expCol) {
-        // Estado select values
-        const estadoField = expCol.fields?.find((f: any) => f.name === 'estado');
-        if (estadoField) {
-          const current: string[] = estadoField.values || estadoField.options?.values || [];
-          const missing = ESTADOS_SISTEMA.filter(e => !current.includes(e));
-          if (missing.length) {
-            const merged = [...new Set([...current, ...ESTADOS_SISTEMA])];
-            estadoField.values = merged;
-            if (estadoField.options) estadoField.options.values = merged;
-            const ok = await patchCol('expedientes', { fields: expCol.fields });
-            this.log(ok ? `  ✅ Estados añadidos: ${missing.join(', ')}` : '  ❌ Error actualizando estados');
-          } else {
-            this.log('  ✅ "expedientes.estado" — completo.');
-          }
-        }
-        // celular field
-        const hasCelular = expCol.fields?.some((f: any) => f.name === 'celular');
-        if (!hasCelular) {
-          expCol.fields.push({ name: 'celular', type: 'text', required: false });
-          const ok = await patchCol('expedientes', { fields: expCol.fields });
-          this.log(ok ? '  ✅ Campo "celular" añadido.' : '  ❌ Error añadiendo celular');
-        } else {
-          this.log('  ✅ "expedientes.celular" — existe.');
-        }
-
-        // new verification checks
-        const newChecks = ['reviso_sanciones'];
-        let updatedExp = false;
-        for (const check of newChecks) {
-          if (!expCol.fields?.some((f: any) => f.name === check)) {
-            expCol.fields.push({ name: check, type: 'bool', required: false });
-            updatedExp = true;
-          }
-        }
-        if (updatedExp) {
-          const ok = await patchCol('expedientes', { fields: expCol.fields });
-          this.log(ok ? '  ✅ Campos de verificación añadidos.' : '  ❌ Error añadiendo verificaciones');
-        } else {
-          this.log('  ✅ Campos de verificación — existen.');
-        }
-        } else {
-          this.log('  ❌ Colección "expedientes" no encontrada. Creando...');
-          const ok = await createCol({
-            name: 'expedientes',
-            type: 'base',
-            system: false,
-            listRule: '@request.auth.id != ""',
-            viewRule: '@request.auth.id != ""',
-            createRule: '@request.auth.id != ""',
-            updateRule: '@request.auth.id != ""',
-            deleteRule: '',
-            fields: [
-              { name: 'dni', type: 'text', required: true },
-              { name: 'nombre', type: 'text', required: true },
-              { name: 'apellido', type: 'text', required: true },
-              { name: 'celular', type: 'text', required: false },
-              { name: 'estado', type: 'select', required: true, options: { values: [
-                'EN PROCESO','IMPRESO','VERIFICADO','ENTREGADO','OBSERVADO','RECHAZADO','ANULADO','ATENDIDO'
-              ] } },
-              { name: 'reviso_sanciones', type: 'bool', required: false }
-            ]
-          });
-          this.log(ok ? '  ✅ Colección "expedientes" creada.' : '  ❌ Error creando "expedientes"');
-        }
-
-      // ── 3. operadores.perfil ──────────────────────────────────────────────
-      this.log('⏳ [2/4] Verificando "operadores"...');
-      const opCol = await getCol('operadores');
-      if (opCol) {
-        const perfilField = opCol.fields?.find((f: any) => f.name === 'perfil');
-        if (perfilField) {
-          const current: string[] = perfilField.values || perfilField.options?.values || [];
-          const missing = PERFILES_SISTEMA.filter(p => !current.includes(p));
-          if (missing.length) {
-            const merged = [...new Set([...current, ...PERFILES_SISTEMA])];
-            perfilField.values = merged;
-            if (perfilField.options) perfilField.options.values = merged;
-            const ok = await patchCol('operadores', { fields: opCol.fields });
-            this.log(ok ? `  ✅ Perfiles añadidos: ${missing.join(', ')}` : '  ❌ Error actualizando perfiles');
-          } else {
-            this.log('  ✅ "operadores.perfil" — completo.');
-          }
-        }
-        await patchCol('operadores', { listRule: "@request.auth.id != ''", viewRule: "@request.auth.id != ''" });
-        this.log('  ✅ Reglas de acceso verificadas.');
-        } else {
-          this.log('  ❌ Colección "operadores" no encontrada. Creando...');
-          const ok = await createCol({
-            name: 'operadores',
-            type: 'auth',
-            system: false,
-            listRule: '@request.auth.id != ""',
-            viewRule: '@request.auth.id != ""',
-            createRule: '@request.auth.id != ""',
-            updateRule: '@request.auth.id != ""',
-            deleteRule: '',
-            fields: [
-              { name: 'email', type: 'email', required: true, unique: true },
-              { name: 'nombre', type: 'text', required: true },
-              { name: 'apellido', type: 'text', required: true },
-              { name: 'perfil', type: 'select', required: true, options: { values: [
-                'REGISTRADOR','OPERADOR','IMPRESOR','SUPERVISOR','ENTREGADOR','ADMINISTRADOR','OTI'
-              ] } }
-            ]
-          });
-          this.log(ok ? '  ✅ Colección "operadores" creada.' : '  ❌ Error creando "operadores"');
-        }
-
-      // ── 4. historial_acciones ──────────────────────────────────────────
-      this.log('⏳ [3/4] Verificando "historial_acciones"...');
-      const histCol = await getCol('historial_acciones');
-      if (histCol) {
-        this.log('  ✅ "historial_acciones" — existe.');
-      } else { 
-        this.log('  ⏳ Creando "historial_acciones" desde cero...');
-        const ok = await createCol({
-          name: "historial_acciones",
-          type: "base",
-          system: false,
-          listRule: "@request.auth.id != ''",
-          viewRule: "@request.auth.id != ''",
-          createRule: "@request.auth.id != ''",
-          updateRule: "", deleteRule: "",
-          fields: [
-            { name: "expediente_id",    type: "text",     required: true  },
-            { name: "expediente_dni",   type: "text",     required: false },
-            { name: "operador_id",      type: "text",     required: true  },
-            { name: "operador_nombre",  type: "text",     required: false },
-            { name: "operador_perfil",  type: "text",     required: false },
-            { name: "accion",           type: "text",     required: true  },
-            { name: "estado_anterior",  type: "text",     required: false },
-            { name: "estado_nuevo",     type: "text",     required: false },
-            { name: "detalles",         type: "text",     required: false }
-          ]
-        });
-        this.log(ok ? '  ✅ "historial_acciones" creada exitosamente.' : '  ❌ Fallo al crear historial_acciones.');
+        needsUpdate = true;
       }
 
-      // ── 5. reportes_generados ─────────────────────────────────────────────
-      this.log('⏳ [4/4] Verificando "reportes_generados"...');
-      const repCol = await getCol('reportes_generados');
-      if (repCol) {
-        const hasSnapshot = repCol.fields?.some((f: any) => f.name === 'snapshot');
-        if (!hasSnapshot) {
-          repCol.fields.push({ name: 'snapshot', type: 'json', required: false });
-          const ok = await patchCol('reportes_generados', { fields: repCol.fields });
-          this.log(ok ? '  ✅ Campo "snapshot" añadido.' : '  ❌ Error añadiendo snapshot');
-        } else {
-          this.log('  ✅ "reportes_generados" — completo.');
+      // estado: select check
+      const stField = fields.find((f: any) => f.name === 'estado');
+      if (stField) {
+        const current = stField.values || stField.options?.values || [];
+        const missing = ESTADOS_SISTEMA.filter(e => !current.includes(e));
+        if (missing.length) {
+          const merged = [...new Set([...current, ...ESTADOS_SISTEMA])];
+          if (stField.options) stField.options.values = merged;
+          else stField.values = merged;
+          needsUpdate = true;
         }
-        await patchCol('reportes_generados', { viewRule: '' });
-        this.log('  ✅ viewRule pública asegurada (verificación QR funciona sin login).');
+      }
+
+      if (needsUpdate) {
+        await patchCol(expId, { fields });
+        this.log('  ✅ "expedientes" optimizado.');
       } else {
-          this.log('  ❌ Colección "reportes_generados" no encontrada. Creando...');
-          const ok = await createCol({
-            name: 'reportes_generados',
-            type: 'base',
-            system: false,
-            listRule: '',
-            viewRule: '',
-            createRule: '@request.auth.id != ""',
-            updateRule: '@request.auth.id != ""',
-            deleteRule: '',
-            fields: [
-              { name: 'nombre', type: 'text', required: true },
-              { name: 'fecha', type: 'date', required: true },
-              { name: 'snapshot', type: 'json', required: false }
-            ]
-          });
-          this.log(ok ? '  ✅ Colección "reportes_generados" creada.' : '  ❌ Error creando "reportes_generados"');
+        this.log('  ✅ "expedientes" — esquema correcto.');
+      }
+    } else {
+      this.log('  ❌ Creando "expedientes" desde cero...');
+      await createCol({
+        name: 'expedientes', type: 'base', system: false,
+        listRule: '@request.auth.id != ""', viewRule: '@request.auth.id != ""',
+        createRule: '@request.auth.id != ""', updateRule: '@request.auth.id != ""',
+        fields: [
+          { name: 'operador', type: 'relation', required: true, options: { collectionId: opId, maxSelect: 1 } },
+          { name: 'dni_solicitante', type: 'text', required: true },
+          { name: 'apellidos_nombres', type: 'text', required: true },
+          { name: 'tramite', type: 'text', required: true },
+          { name: 'estado', type: 'select', required: true, values: ESTADOS_SISTEMA },
+          { name: 'categoria', type: 'text', required: true },
+          { name: 'lugar_entrega', type: 'text', required: true },
+          { name: 'fecha_registro', type: 'date', required: true }
+        ]
+      });
+    }
+
+    // ── 2. operadores ──────────────────────────────────────────────────
+    this.log('');
+    this.log('⏳ [2/4] Verificando "operadores"...');
+    if (opColActual) {
+      let fields = [...opColActual.fields];
+      let needsUpdate = false;
+
+      // sede: text -> select (v0.23 workaround)
+      const sdField = fields.find((f: any) => f.name === 'sede');
+      if (sdField && sdField.type !== 'select') {
+        this.log('  ⚠️ Migrando campo "sede" a selección...');
+        sdField.name = 'sede_legacy';
+        fields.push({ 
+          name: 'sede', type: 'select', required: true, 
+          options: { values: SEDES_SISTEMA, maxSelect: 1 } 
+        });
+        needsUpdate = true;
+      }
+
+      const pfField = fields.find((f: any) => f.name === 'perfil');
+      if (pfField) {
+        const current = pfField.values || pfField.options?.values || [];
+        const missing = PERFILES_SISTEMA.filter(p => !current.includes(p));
+        if (missing.length) {
+          const merged = [...new Set([...current, ...PERFILES_SISTEMA])];
+          if (pfField.options) pfField.options.values = merged;
+          else pfField.values = merged;
+          needsUpdate = true;
         }
+      }
+      if (needsUpdate) await patchCol(opId, { fields });
+      
+      // Asegurar reglas de Auth y DNI Identity
+      await patchCol(opId, { 
+        listRule: "@request.auth.id != ''", 
+        viewRule: "@request.auth.id != ''", 
+        manageRule: "@request.auth.id != ''",
+        authOptions: { identityFields: ['email', 'dni'], allowPasswordAuth: true }
+      });
+      this.log('  ✅ "operadores" — esquema y reglas actualizados.');
+    }
 
-      this.log('');
-      this.log('🎉 Sincronización completada. El sistema está listo.');
+    // ── 3. historial_acciones ──────────────────────────────────────────
+    this.log('');
+    this.log('⏳ [3/4] Verificando "historial_acciones"...');
+    const histCol = await getCol('historial_acciones');
+    if (histCol) {
+      this.log('  ✅ Historial verificado.');
+    }
 
-    } catch (err: any) {
-      this.log('❌ Error: ' + (err.message || JSON.stringify(err)));
+    // ── 4. reportes_generados ──────────────────────────────────────────
+    this.log('');
+    this.log('⏳ [4/4] Verificando "reportes_generados"...');
+    const repCol = await getCol('reportes_generados');
+    if (repCol) {
+      await patchCol(repCol.id, { viewRule: "" });
+      this.log('  ✅ Reportes parametrizados.');
+    }
+
+    // ── 5. MIGRACIÓN DE DATOS (Legacy -> New) ──────────────────────────
+    this.log('');
+    this.log('🔄 Iniciando migración de datos críticos...');
+    
+    // Migrar Expedientes (operador_legacy -> operador)
+    if (expCol) {
+      const legacyExp = await this.pbService.pb.collection(expId).getFullList({
+        filter: 'operador_legacy != "" && (operador = null || operador = "")',
+        requestKey: 'migracion_exp'
+      });
+      if (legacyExp.length > 0) {
+        this.log(`  📦 Reparando ${legacyExp.length} relaciones de operador...`);
+        for (const rec of legacyExp) {
+          try {
+            await this.pbService.pb.collection(expId).update(rec.id, {
+              operador: rec['operador_legacy']
+            });
+          } catch (e) {}
+        }
+      }
+      
+      // Limpieza: Eliminar campo legacy si ya no hay datos pendientes
+      const remaining = await this.pbService.pb.collection(expId).getList(1, 1, {
+        filter: 'operador_legacy != "" && (operador = null || operador = "")'
+      });
+      if (remaining.totalItems === 0) {
+        this.log('  🧹 Limpiando esquema: Eliminando "operador_legacy"...');
+        const fresh = await getCol('expedientes');
+        if (fresh) {
+          const cleanFields = fresh.fields.filter((f: any) => f.name !== 'operador_legacy');
+          await patchCol(expId, { fields: cleanFields });
+        }
+      }
+    }
+
+    // Migrar Operadores (sede_legacy -> sede)
+    if (opColActual) {
+      const legacyOps = await this.pbService.pb.collection(opId).getFullList({
+        filter: 'sede_legacy != "" && sede = ""',
+        requestKey: 'migracion_ops'
+      });
+      if (legacyOps.length > 0) {
+        this.log(`  👤 Reparando ${legacyOps.length} sedes de operadores...`);
+        for (const rec of legacyOps) {
+          try {
+            await this.pbService.pb.collection(opId).update(rec.id, {
+              sede: rec['sede_legacy']
+            });
+          } catch (e) {}
+        }
+      }
+
+      // Limpieza: Eliminar campo legacy si ya no hay datos pendientes
+      const remaining = await this.pbService.pb.collection(opId).getList(1, 1, {
+        filter: 'sede_legacy != "" && sede = ""'
+      });
+      if (remaining.totalItems === 0) {
+        this.log('  🧹 Limpiando esquema: Eliminando "sede_legacy"...');
+        const fresh = await getCol('operadores');
+        if (fresh) {
+          const cleanFields = fresh.fields.filter((f: any) => f.name !== 'sede_legacy');
+          await patchCol(opId, { fields: cleanFields });
+        }
+      }
+    }
+
+    this.log('');
+    this.log('🎉 Sincronización completada. Sistema único y optimizado.');
+    this.isRunning.set(false);
+  }
+
+  // -------------------------------------------------------------------
+  // Generar un respaldo (Backup) en el servidor
+  // -------------------------------------------------------------------
+  async generarBackup() {
+    if (this.isRunning()) return;
+    this.isRunning.set(true);
+    this.logs.set([]);
+    const { email, password } = this.form.value;
+    
+    try {
+      this.log('🔐 Autenticando para Backup...');
+      const authRes = await fetch(this.pbService.pb.baseURL + '/api/collections/_superusers/auth-with-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identity: email ?? '', password: password ?? '' })
+      });
+      if (!authRes.ok) throw new Error('Auth fallida');
+      const { token } = await authRes.json();
+
+      const name = `backup_manual_${new Date().getTime()}.zip`;
+      this.log(`📦 Creando backup: ${name}...`);
+      
+      const res = await fetch(this.pbService.pb.baseURL + '/api/backups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ name })
+      });
+
+      if (res.ok) {
+        this.log('✅ Backup generado en el servidor.');
+        this.backupReady.set(true);
+        this.log(`📥 El archivo "${name}" está disponible en el Panel de Administración.`);
+        this.snackBar.open('Respaldo generado con éxito', 'OK', { duration: 5000 });
+      } else {
+        const err = await res.text();
+        this.log(`❌ Error backup: ${err}`);
+      }
+    } catch (e: any) {
+      this.log(`❌ Excepción: ${e.message}`);
     } finally {
       this.isRunning.set(false);
     }
+  }
+
+  abrirPanelAdmin() {
+    const adminUrl = window.location.protocol + '//' + window.location.hostname + ':8095/_/';
+    window.open(adminUrl, '_blank');
+  }
+
+  // -------------------------------------------------------------------
+  // Resetear todas las colecciones y volver a sincronizar
+  // -------------------------------------------------------------------
+  async resetAll() {
+    if (this.isRunning()) return;
+    if (!confirm('Esta acción ELIMINARÁ todos los datos (Expedientes, Operadores, Historial). ¿Deseas continuar?')) return;
+    
+    this.isRunning.set(true);
+    this.logs.set([]);
+    const { email, password } = this.form.value;
+    this.log('🔐 Autenticando como Super Admin para reset...');
+    const authRes = await fetch(this.pbService.pb.baseURL + '/api/collections/_superusers/auth-with-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: email ?? '', password: password ?? '' })
+    });
+    if (!authRes.ok) {
+      this.log('❌ Error autenticando para reset');
+      this.isRunning.set(false);
+      return;
+    }
+    const { token } = await authRes.json();
+    const doFetch = async (path: string, opts: any = {}) => {
+      const { authToken, ...fetchOpts } = opts;
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      return fetch(this.pbService.pb.baseURL + path, { ...fetchOpts, headers: { ...headers, ...(fetchOpts.headers || {}) } });
+    };
+    const deleteCol = async (name: string) => {
+      const r = await doFetch(`/api/collections/${name}`, { method: 'DELETE', authToken: token });
+      if (!r.ok) {
+        if (r.status === 404) {
+          this.log(`  ℹ️ Colección "${name}" no existía (se omite)`);
+        } else {
+          this.log(`  ⚠ DELETE ${name}: ${await r.text()}`);
+        }
+      } else {
+        this.log(`  ✅ Colección "${name}" eliminada.`);
+      }
+      return r.ok || r.status === 404;
+    };
+
+    // ELIMINACIÓN EN ORDEN DE DEPENDENCIA (Hijas primero)
+    const collectionsToDelete = ['reportes_generados', 'historial_acciones', 'expedientes', 'operadores'];
+    
+    this.log('🗑️ Eliminando colecciones (orden de dependencia)...');
+    for (const col of collectionsToDelete) {
+      await deleteCol(col);
+    }
+    
+    this.log('✅ Base de datos limpia. Re-sincronizando...');
+    await this.iniciarSync();
+    this.isRunning.set(false);
   }
 }
 
@@ -324,12 +465,12 @@ export class AdminAuthModal {
         <mat-card-subtitle>Verifica y repara todas las colecciones PocketBase</mat-card-subtitle>
       </mat-card-header>
       <mat-card-content>
-        <p>Actualiza automáticamente:</p>
+        <p>Instancia o actualiza las colecciones con esquemas aptos para PocketBase v0.23:</p>
         <ul>
-          <li><code>expedientes</code> — estado <strong>IMPRESO</strong> + campo <strong>celular</strong></li>
-          <li><code>operadores.perfil</code> — añade <strong>IMPRESOR, REGISTRADOR…</strong></li>
-          <li><code>historial_expedientes</code> — define todos los campos de auditoría</li>
-          <li><code>reportes_generados</code> — campo <strong>snapshot</strong> + acceso público QR</li>
+          <li><code>expedientes</code> — incluye <strong>dni_solicitante, tramite, lugar_entrega, etc</strong></li>
+          <li><code>operadores</code> — usa <strong>dni, nombre, sede y perfil</strong> (Auth collection)</li>
+          <li><code>historial_acciones</code> — define todos los parámetros de logueo de auditoría</li>
+          <li><code>reportes_generados</code> — guarda <strong>snapshot</strong> e incluye el acceso público por QR</li>
         </ul>
       </mat-card-content>
       <mat-card-actions align="end">
@@ -350,8 +491,9 @@ export class AdminAuthModal {
         <div class="flow-list">
           <div class="flow-item"><span class="badge proc">EN PROCESO</span><span>Registrador / Operador ingresa el expediente</span></div>
           <div class="flow-item"><span class="badge impr">IMPRESO</span><span>El <strong>Impresor</strong> genera la licencia física</span></div>
-          <div class="flow-item"><span class="badge aten">VERIFICADO</span><span>El <strong>Supervisor</strong> realiza el control de calidad</span></div>
+          <div class="flow-item"><span class="badge veri">VERIFICADO</span><span>El <strong>Supervisor</strong> realiza el control de calidad</span></div>
           <div class="flow-item"><span class="badge entr">ENTREGADO</span><span>El <strong>Entregador</strong> confirma la entrega al usuario</span></div>
+          <div class="flow-item"><span class="badge aten">ATENDIDO</span><span>Expediente cerrado y archivado (Cierre diario)</span></div>
           <div class="flow-item"><span class="badge obs">OBSERVADO</span><span>Se requiere corrección o subsanación de datos</span></div>
           <div class="flow-item"><span class="badge rech">RECHAZADO</span><span>El trámite no procede (Incumplimiento)</span></div>
           <div class="flow-item"><span class="badge anul">ANULADO</span><span>Documento invalidado por Supervisor / OTI</span></div>
@@ -418,7 +560,8 @@ export class AdminAuthModal {
     .badge { padding: 2px 10px; border-radius: 10px; font-size: 0.73rem; font-weight: 700; white-space: nowrap; }
     .badge.proc { background: #e0f2fe; color: #0284c7; }
     .badge.impr { background: #e0e7ff; color: #4338ca; }
-    .badge.aten { background: #dcfce7; color: #15803d; }
+    .badge.veri { background: #dcfce7; color: #15803d; }
+    .badge.aten { background: #ccfbf1; color: #0f766e; border: 1px solid #99f6e4; }
     .badge.entr { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
     .badge.obs  { background: #ffedd5; color: #c2410c; }
     .badge.rech { background: #fee2e2; color: #b91c1c; }

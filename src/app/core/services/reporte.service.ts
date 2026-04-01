@@ -63,7 +63,7 @@ export class ReporteService {
     if (data.tipo_reporte === 'REPORTE_DIARIO') {
       try {
         const existing = await this.pbService.pb.collection(this.COLLECTION).getFullList({
-          filter: `tipo_reporte = "REPORTE_DIARIO" && fecha_reporte = "${data.fecha_reporte}"`
+          filter: `tipo_reporte = 'REPORTE_DIARIO' && fecha_reporte = '${data.fecha_reporte}'`
         });
         await Promise.all(existing.map(r => this.pbService.pb.collection(this.COLLECTION).delete(r.id)));
         if (existing.length > 0) console.log(`[ReporteService] Reemplazados ${existing.length} reporte(s) previo(s) del ${data.fecha_reporte}`);
@@ -109,9 +109,8 @@ export class ReporteService {
    * Operator name is stored directly in generado_por_nombre field.
    */
   async getHistorial(): Promise<RecordModel[]> {
-    return this.pbService.pb.collection(this.COLLECTION).getFullList({
-      sort: '-fecha_generacion'
-    });
+    console.log("[DEBUG] getHistorial sin ordenamiento...");
+    return this.pbService.pb.collection(this.COLLECTION).getFullList();
   }
 
   /**

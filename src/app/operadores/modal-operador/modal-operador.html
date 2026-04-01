@@ -38,16 +38,15 @@
       <mat-icon matPrefix>admin_panel_settings</mat-icon>
     </mat-form-field>
 
-    @if (form.value.perfil === 'ENTREGADOR') {
-      <mat-form-field appearance="outline" class="full-width fade-in">
-        <mat-label>Sede Asignada</mat-label>
-        <mat-select formControlName="sede">
-          <mat-option value="PUNO">Puno</mat-option>
-          <mat-option value="JULIACA">Juliaca</mat-option>
-        </mat-select>
-        <mat-icon matPrefix>place</mat-icon>
-      </mat-form-field>
-    }
+    <mat-form-field appearance="outline" class="full-width">
+      <mat-label>Sede Asignada</mat-label>
+      <mat-select formControlName="sede">
+        @for (s of sedes; track s) {
+          <mat-option [value]="s">{{ s }}</mat-option>
+        }
+      </mat-select>
+      <mat-icon matPrefix>place</mat-icon>
+    </mat-form-field>
 
     <div class="password-note" *ngIf="isEditMode">
       <mat-icon>info</mat-icon>

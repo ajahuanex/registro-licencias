@@ -308,7 +308,7 @@ export class ReporteMensualComponent implements OnInit {
       const endStr   = `${year}-${String(month+1).padStart(2,'0')}-${lastDay} 23:59:59.999Z`;
       const filter   = `fecha_registro >= "${startStr}" && fecha_registro <= "${endStr}"`;
       const data = await this.expedienteService['pbService'].pb.collection('expedientes').getFullList({
-        filter, sort: 'fecha_registro', expand: 'operador'
+        filter: filter, expand: 'operador'
       });
       this.records.set(data);
       setTimeout(() => this.renderCharts(), 100);

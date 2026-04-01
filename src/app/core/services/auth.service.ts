@@ -65,7 +65,6 @@ export class AuthService {
     console.log(`[AUTH] Intento de login: ${dni}`);
     try {
       this.pbService.pb.authStore.clear(); 
-      // Clear any stale impersonation state on a fresh login
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem('impersonation_state');
       }
@@ -73,6 +72,24 @@ export class AuthService {
 
       const authData = await this.pbService.pb.collection('operadores').authWithPassword(dni, password);
       console.log("[AUTH] Login exitoso para:", authData.record['nombre']);
+
+      // --- REGISTRO DE AUDITORÍA (IP y Navegador) ---
+      try {
+        const ipRes = await fetch('https://api.ipify.org?format=json');
+        const { ip } = await ipRes.json();
+        const userAgent = window.navigator.userAgent;
+
+        await this.pbService.pb.collection('historial_acciones').create({
+          operador_id: authData.record.id,
+          accion: 'LOGIN',
+          detalles: `Inicio de sesión exitoso (DNI: ${dni})`,
+          ip_publica: ip,
+          user_agent: userAgent
+        });
+      } catch (logErr) {
+        console.warn('[AUTH] No se pudo registrar la auditoría de IP:', logErr);
+      }
+
       return true;
     } catch (err: any) {
       console.error('[AUTH] Login fallido:', err.message);

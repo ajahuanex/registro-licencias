@@ -13,7 +13,9 @@ export class PocketbaseService {
     // This works for both localhost AND phones on the same network
     // because the Vite server (on the PC) proxies the request to PocketBase
     const origin = (typeof window !== 'undefined') ? window.location.origin : 'http://localhost:4200';
-    this.pb = new PocketBase(origin + '/pb-api');
+    const baseUrl = (origin + '/pb-api').replace(/\/+$/, '');
+    console.log('[POCKETBASE] Base URL configurada:', baseUrl);
+    this.pb = new PocketBase(baseUrl);
     this.pb.autoCancellation(false);
   }
 }

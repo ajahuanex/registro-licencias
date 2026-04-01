@@ -4,6 +4,7 @@ import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, Va
 import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
 import { RecordModel } from 'pocketbase';
 import { OperadorService, OperadorData } from '../../core/services/operador.service';
+import { AuthService } from '../../core/services/auth.service';
 
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -11,7 +12,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { PERFILES_SISTEMA } from '../../core/constants/app.constants';
+import { PERFILES_SISTEMA, SEDES_SISTEMA } from '../../core/constants/app.constants';
 
 export const passwordMatchValidator: ValidatorFn = (control: AbstractControl): ValidationErrors | null => {
   const password = control.get('password')?.value;
@@ -41,6 +42,7 @@ export const passwordMatchValidator: ValidatorFn = (control: AbstractControl): V
 export class ModalOperador {
   private fb = inject(FormBuilder);
   private operadorService = inject(OperadorService);
+  private authService = inject(AuthService);
   private snackBar = inject(MatSnackBar);
   dialogRef = inject(MatDialogRef<ModalOperador>);
 
@@ -49,13 +51,14 @@ export class ModalOperador {
   hidePassword = signal<boolean>(true);
 
   perfiles = [...PERFILES_SISTEMA];
+  sedes = [...SEDES_SISTEMA];
 
   form = this.fb.group({
     dni: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],
     nombre: ['', [Validators.required, Validators.minLength(3)]],
     email: ['', [Validators.email]],
     perfil: ['REGISTRADOR', Validators.required],
-    sede: [''],
+    sede: ['PUNO'],
     password: ['', [Validators.minLength(8)]],
     passwordConfirm: ['']
   }, { validators: passwordMatchValidator });
@@ -76,6 +79,12 @@ export class ModalOperador {
       this.form.controls.password.setValidators([Validators.required, Validators.minLength(8)]);
       this.form.controls.passwordConfirm.setValidators([Validators.required]);
     }
+
+    // RESTRICCIÓN: Solo OTI puede crear/editar a otros OTI
+    const currentProfile = this.authService.currentUser()?.['perfil'];
+    if (currentProfile === 'ADMINISTRADOR') {
+      this.perfiles = PERFILES_SISTEMA.filter(p => p !== 'OTI');
+    }
   }
 
   async onSubmit() {
@@ -95,42 +104,59 @@ export class ModalOperador {
         payloadEmail = `${val.dni}@drtc.gob.pe`;
       }
 
-      const payload: Partial<OperadorData> = {
+      const payload: any = {
         dni: val.dni!,
         nombre: val.nombre!,
-        email: payloadEmail, // Use the potentially auto-generated email
-        perfil: val.perfil!
+        email: payloadEmail.toLowerCase(),
+        perfil: val.perfil!,
+        sede: (val.perfil === 'ENTREGADOR' && val.sede) ? val.sede.toUpperCase() : '',
+        password: val.password || 'password123',
+        passwordConfirm: val.passwordConfirm || 'password123',
+        emailVisibility: true
       };
 
-      if (val.perfil === 'ENTREGADOR' && val.sede) {
-        payload.sede = val.sede.toUpperCase();
-      } else {
-        payload.sede = '';
-      }
-
-      if (val.password) {
-        payload.password = val.password;
-        payload.passwordConfirm = val.passwordConfirm!;
-      }
-
       if (this.isEditMode) {
+        console.log("[DEBUG] Enviando PATCH para operador:", payload);
         await this.operadorService.updateOperador(this.data!.id, payload);
         this.snackBar.open('Operador actualizado exitosamente', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
       } else {
-        await this.operadorService.createOperador(payload as OperadorData);
+        // En creación, añadir el DNI como username por si PB v0.23 lo requiere para Auth
+        payload.username = val.dni; 
+        console.log("[DEBUG] Enviando POST para nuevo operador:", payload);
+        await this.operadorService.createOperador(payload);
         this.snackBar.open('Operador creado exitosamente', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
       }
 
-      this.dialogRef.close(true); // signal success
+      this.dialogRef.close(true);
     } catch (e: any) {
-      console.error(e);
+      console.error("❌ POCKETBASE RECHAZÓ EL PAYLOAD ❌");
+      console.error("Formulario:", this.form.getRawValue());
+      console.error("Error detallado de PB:", e.response ? JSON.stringify(e.response, null, 2) : e);
+      
       let errorMsg = 'Error al guardar el operador';
-      if (e.data?.data) {
-        errorMsg += ': ' + JSON.stringify(e.data.data);
+      if (e.status === 400 && e.response?.data) {
+        const data = e.response.data;
+        // Revisar campos comunes de unicidad en Auth collections
+        if (data.email) errorMsg = 'El correo electrónico ya existe o es inválido.';
+        else if (data.dni) errorMsg = 'El DNI ya está registrado en el sistema.';
+        else if (data.username) errorMsg = 'El DNI (usuario) ya está registrado en el sistema.';
+        else {
+           // Intento de extraer mensaje amigable de cualquier otro campo
+           const firstKey = Object.keys(data)[0];
+           if (firstKey) {
+             errorMsg = `Error en campo ${firstKey}: ${data[firstKey].message || JSON.stringify(data[firstKey])}`;
+           } else if (e.message && e.message.includes('unique')) {
+             errorMsg = 'Error: Ya existe un registro con esos datos (DNI o Correo).';
+           } else {
+             errorMsg += ': ' + JSON.stringify(data);
+           }
+        }
+      } else if (e.message && (e.message.includes('unique') || e.message.includes('required'))) {
+        errorMsg = 'Error de validación: El DNI o Correo ya existen.';
       } else {
-        errorMsg += ': ' + e.message;
+        errorMsg += ': ' + (e.message || 'Error desconocido');
       }
-      this.snackBar.open(errorMsg, 'Cerrar', { duration: 5000, panelClass: ['error-snackbar'] });
+      this.snackBar.open(errorMsg, 'Cerrar', { duration: 6000, panelClass: ['error-snackbar'] });
     } finally {
       this.isLoading.set(false);
     }

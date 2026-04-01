@@ -11,9 +11,18 @@ export const ESTADOS_SISTEMA = [
 
 export type EstadoExpediente = typeof ESTADOS_SISTEMA[number];
 
+export const SEDES_SISTEMA = [
+  'PUNO',
+  'JULIACA',
+  'ILAVE',
+  'HUANCANE',
+  'AZANGARO'
+] as const;
+
+export type SedeSistema = typeof SEDES_SISTEMA[number];
+
 export const PERFILES_SISTEMA = [
   'REGISTRADOR',
-  'OPERADOR',
   'IMPRESOR',
   'SUPERVISOR',
   'ENTREGADOR',
@@ -25,7 +34,6 @@ export type PerfilSistema = typeof PERFILES_SISTEMA[number];
 
 export const ESTADOS_POR_PERFIL: Record<string, string[]> = {
   REGISTRADOR:      ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'],
-  OPERADOR:         ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'],
   IMPRESOR:         ['IMPRESO', 'OBSERVADO', 'EN PROCESO'],
   SUPERVISOR:       ['VERIFICADO', 'OBSERVADO', 'RECHAZADO', 'ANULADO', 'EN PROCESO'],
   ENTREGADOR:       ['ENTREGADO', 'OBSERVADO'],
