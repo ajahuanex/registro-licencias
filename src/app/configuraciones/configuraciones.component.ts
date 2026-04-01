@@ -85,255 +85,276 @@ export class AdminAuthModal {
   private log(msg: string) { this.logs.update(l => [...l, msg]); }
 
   async iniciarSync() {
-    // Sync logic (moved from later in file)
     if (this.form.invalid) return;
     this.isRunning.set(true);
     this.logs.set([]);
-    const { email, password } = this.form.value;
-    // Use pb.baseURL for proxy compatibility
-    const pbUrl = this.pbService.pb.baseURL;
-    const doFetch = async (path: string, opts: any = {}) => {
-      const { authToken, ...fetchOpts } = opts;
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-      return fetch(pbUrl + path, { ...fetchOpts, headers: { ...headers, ...(fetchOpts.headers || {}) } });
-    };
-    // Authenticate super admin
-    this.log('🔐 Autenticando como Super Admin...');
-    const authRes = await doFetch('/api/collections/_superusers/auth-with-password', {
-      method: 'POST',
-      body: JSON.stringify({ identity: email, password })
-    });
-    if (!authRes.ok) throw new Error('Credenciales inválidas — verifica email y contraseña del admin PocketBase.');
-    const { token } = await authRes.json();
-    this.log('✅ Autenticado correctamente.');
 
-    // Admin endpoints
-    const getCol = async (name: string) => {
-      // Intentar listar para obtener el ID real (más seguro en v0.23)
-      const r = await doFetch(`/api/collections?filter=name='${name}'`, { authToken: token });
-      if (r.ok) {
-        const data = await r.json();
-        return data.items && data.items.length > 0 ? data.items[0] : null;
-      }
-      return null;
-    };
-
-    const patchCol = async (idOrName: string, body: any) => {
-      const r = await doFetch(`/api/collections/${idOrName}`, {
-        method: 'PATCH', authToken: token, body: JSON.stringify(body)
+    try {
+      const { email, password } = this.form.value;
+      // Use pb.baseURL for proxy compatibility
+      const pbUrl = this.pbService.pb.baseURL;
+      const doFetch = async (path: string, opts: any = {}) => {
+        const { authToken, ...fetchOpts } = opts;
+        const headers: any = { 'Content-Type': 'application/json' };
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        return fetch(pbUrl + path, { ...fetchOpts, headers: { ...headers, ...(fetchOpts.headers || {}) } });
+      };
+      // Authenticate super admin
+      this.log('🔐 Autenticando como Super Admin...');
+      const authRes = await doFetch('/api/collections/_superusers/auth-with-password', {
+        method: 'POST',
+        body: JSON.stringify({ identity: email, password })
       });
-      if (!r.ok) {
-        const err = await r.text();
-        this.log(`  ⚠ Error PATCH ${idOrName}: ${err}`);
-      }
-      return r.ok;
-    };
+      if (!authRes.ok) throw new Error('Credenciales inválidas — verifica email y contraseña del admin PocketBase.');
+      const { token } = await authRes.json();
+      this.log('✅ Autenticado correctamente.');
 
-    const createCol = async (body: any) => {
-      const r = await doFetch(`/api/collections`, {
-        method: 'POST', authToken: token, body: JSON.stringify(body)
-      });
-      if (!r.ok) { 
-        const errorText = await r.text();
-        this.log(`  ⚠ POST /collections: ${errorText}`); 
-      }
-      return r.ok;
-    };
+      // Admin endpoints
+      const getCol = async (name: string) => {
+        // Intentar listar para obtener el ID real (más seguro en v0.23)
+        const r = await doFetch(`/api/collections?filter=name='${name}'`, { authToken: token });
+        if (r.ok) {
+          const data = await r.json();
+          return data.items && data.items.length > 0 ? data.items[0] : null;
+        }
+        return null;
+      };
 
-    const expCol = await getCol('expedientes');
-    const opColActual = await getCol('operadores');
-    
-    // IDs reales (fallback a nombres si no se encuentran)
-    const expId = expCol?.id || 'expedientes';
-    const opId = opColActual?.id || 'operadores';
-
-    // ── 1. expedientes ──────────────────────────────────────────────────
-    this.log('');
-    this.log('⏳ [1/4] Verificando "expedientes"...');
-    if (expCol) {
-      this.log('  ⏳ Auditando integridad...');
-      let fields = [...expCol.fields];
-      let needsUpdate = false;
-
-      // operador: text -> relation (v0.23 safe rename)
-      const opField = fields.find((f: any) => f.name === 'operador');
-      if (opField && opField.type !== 'relation') {
-        this.log('  ⚠️ Migrando campo "operador" a relación...');
-        opField.name = 'operador_legacy';
-        fields.push({ 
-          name: 'operador', type: 'relation', required: true, 
-          options: { collectionId: opId, maxSelect: 1, minSelect: 0, cascadeDelete: false } 
+      const patchCol = async (idOrName: string, body: any) => {
+        const r = await doFetch(`/api/collections/${idOrName}`, {
+          method: 'PATCH', authToken: token, body: JSON.stringify(body)
         });
-        needsUpdate = true;
-      }
+        if (!r.ok) {
+          const err = await r.text();
+          this.log(`  ⚠ Error PATCH ${idOrName}: ${err}`);
+        }
+        return r.ok;
+      };
 
-      // estado: select check
-      const stField = fields.find((f: any) => f.name === 'estado');
-      if (stField) {
-        const current = stField.values || stField.options?.values || [];
-        const missing = ESTADOS_SISTEMA.filter(e => !current.includes(e));
-        if (missing.length) {
-          const merged = [...new Set([...current, ...ESTADOS_SISTEMA])];
-          if (stField.options) stField.options.values = merged;
-          else stField.values = merged;
+      const createCol = async (body: any) => {
+        const r = await doFetch(`/api/collections`, {
+          method: 'POST', authToken: token, body: JSON.stringify(body)
+        });
+        if (!r.ok) { 
+          const errorText = await r.text();
+          this.log(`  ⚠ POST /collections: ${errorText}`); 
+        }
+        return r.ok;
+      };
+
+      const expCol = await getCol('expedientes');
+      const opColActual = await getCol('operadores');
+      
+      // IDs reales (fallback a nombres si no se encuentran)
+      const expId = expCol?.id || 'expedientes';
+      const opId = opColActual?.id || 'operadores';
+
+      // ── 1. expedientes ──────────────────────────────────────────────────
+      this.log('');
+      this.log('⏳ [1/4] Verificando "expedientes"...');
+      if (expCol) {
+        this.log('  ⏳ Auditando integridad...');
+        let fields = [...expCol.fields];
+        let needsUpdate = false;
+
+        // operador: text -> relation (v0.23 safe rename)
+        const opField = fields.find((f: any) => f.name === 'operador');
+        if (opField && opField.type !== 'relation') {
+          this.log('  ⚠️ Migrando campo "operador" a relación...');
+          opField.name = 'operador_legacy';
+          fields.push({ 
+            name: 'operador', type: 'relation', required: true, 
+            options: { collectionId: opId, maxSelect: 1, minSelect: 0, cascadeDelete: false } 
+          });
           needsUpdate = true;
         }
-      }
 
-      if (needsUpdate) {
-        await patchCol(expId, { fields });
-        this.log('  ✅ "expedientes" optimizado.');
+        // estado: select check
+        const stField = fields.find((f: any) => f.name === 'estado');
+        if (stField) {
+          const current = stField.values || stField.options?.values || [];
+          const missing = ESTADOS_SISTEMA.filter(e => !current.includes(e));
+          if (missing.length) {
+            const merged = [...new Set([...current, ...ESTADOS_SISTEMA])];
+            if (stField.options) stField.options.values = merged;
+            else stField.values = merged;
+            needsUpdate = true;
+          }
+        }
+
+        if (needsUpdate) {
+          await patchCol(expId, { fields });
+          this.log('  ✅ "expedientes" optimizado.');
+        } else {
+          this.log('  ✅ "expedientes" — esquema correcto.');
+        }
       } else {
-        this.log('  ✅ "expedientes" — esquema correcto.');
-      }
-    } else {
-      this.log('  ❌ Creando "expedientes" desde cero...');
-      await createCol({
-        name: 'expedientes', type: 'base', system: false,
-        listRule: '@request.auth.id != ""', viewRule: '@request.auth.id != ""',
-        createRule: '@request.auth.id != ""', updateRule: '@request.auth.id != ""',
-        fields: [
-          { name: 'operador', type: 'relation', required: true, options: { collectionId: opId, maxSelect: 1 } },
-          { name: 'dni_solicitante', type: 'text', required: true },
-          { name: 'apellidos_nombres', type: 'text', required: true },
-          { name: 'tramite', type: 'text', required: true },
-          { name: 'estado', type: 'select', required: true, values: ESTADOS_SISTEMA },
-          { name: 'categoria', type: 'text', required: true },
-          { name: 'lugar_entrega', type: 'text', required: true },
-          { name: 'fecha_registro', type: 'date', required: true }
-        ]
-      });
-    }
-
-    // ── 2. operadores ──────────────────────────────────────────────────
-    this.log('');
-    this.log('⏳ [2/4] Verificando "operadores"...');
-    if (opColActual) {
-      let fields = [...opColActual.fields];
-      let needsUpdate = false;
-
-      // sede: text -> select (v0.23 workaround)
-      const sdField = fields.find((f: any) => f.name === 'sede');
-      if (sdField && sdField.type !== 'select') {
-        this.log('  ⚠️ Migrando campo "sede" a selección...');
-        sdField.name = 'sede_legacy';
-        fields.push({ 
-          name: 'sede', type: 'select', required: true, 
-          options: { values: SEDES_SISTEMA, maxSelect: 1 } 
+        this.log('  ❌ Creando "expedientes" desde cero...');
+        await createCol({
+          name: 'expedientes', type: 'base', system: false,
+          listRule: '@request.auth.id != ""', viewRule: '@request.auth.id != ""',
+          createRule: '@request.auth.id != ""', updateRule: '@request.auth.id != ""',
+          fields: [
+            { name: 'operador', type: 'relation', required: true, options: { collectionId: opId, maxSelect: 1 } },
+            { name: 'dni_solicitante', type: 'text', required: true },
+            { name: 'apellidos_nombres', type: 'text', required: true },
+            { name: 'tramite', type: 'text', required: true },
+            { name: 'estado', type: 'select', required: true, values: ESTADOS_SISTEMA },
+            { name: 'categoria', type: 'text', required: true },
+            { name: 'lugar_entrega', type: 'text', required: true },
+            { name: 'fecha_registro', type: 'date', required: true }
+          ]
         });
-        needsUpdate = true;
       }
 
-      const pfField = fields.find((f: any) => f.name === 'perfil');
-      if (pfField) {
-        const current = pfField.values || pfField.options?.values || [];
-        const missing = PERFILES_SISTEMA.filter(p => !current.includes(p));
-        if (missing.length) {
-          const merged = [...new Set([...current, ...PERFILES_SISTEMA])];
-          if (pfField.options) pfField.options.values = merged;
-          else pfField.values = merged;
+      // ── 2. operadores ──────────────────────────────────────────────────
+      this.log('');
+      this.log('⏳ [2/4] Verificando "operadores"...');
+      if (opColActual) {
+        let fields = [...opColActual.fields];
+        let needsUpdate = false;
+
+        // sede: text -> select (v0.23 workaround)
+        const sdField = fields.find((f: any) => f.name === 'sede');
+        if (sdField && sdField.type !== 'select') {
+          this.log('  ⚠️ Migrando campo "sede" a selección...');
+          sdField.name = 'sede_legacy';
+          fields.push({ 
+            name: 'sede', type: 'select', required: true, 
+            options: { values: SEDES_SISTEMA, maxSelect: 1 } 
+          });
           needsUpdate = true;
         }
+
+        const pfField = fields.find((f: any) => f.name === 'perfil');
+        if (pfField) {
+          const current = pfField.values || pfField.options?.values || [];
+          const missing = PERFILES_SISTEMA.filter(p => !current.includes(p));
+          if (missing.length) {
+            const merged = [...new Set([...current, ...PERFILES_SISTEMA])];
+            if (pfField.options) pfField.options.values = merged;
+            else pfField.values = merged;
+            needsUpdate = true;
+          }
+        }
+        if (needsUpdate) await patchCol(opId, { fields });
+        
+        // Asegurar reglas de Auth y DNI Identity
+        await patchCol(opId, { 
+          listRule: "@request.auth.id != ''", 
+          viewRule: "@request.auth.id != ''", 
+          manageRule: "@request.auth.id != ''",
+          authOptions: { identityFields: ['email', 'dni'], allowPasswordAuth: true }
+        });
+        this.log('  ✅ "operadores" — esquema y reglas actualizados.');
       }
-      if (needsUpdate) await patchCol(opId, { fields });
+
+      // ── 3. historial_acciones ──────────────────────────────────────────
+      this.log('');
+      this.log('⏳ [3/4] Verificando "historial_acciones"...');
+      const histCol = await getCol('historial_acciones');
+      if (histCol) {
+        this.log('  ✅ Historial verificado.');
+      }
+
+      // ── 4. reportes_generados ──────────────────────────────────────────
+      this.log('');
+      this.log('⏳ [4/4] Verificando "reportes_generados"...');
+      const repCol = await getCol('reportes_generados');
+      if (repCol) {
+        await patchCol(repCol.id, { viewRule: "" });
+        this.log('  ✅ Reportes parametrizados.');
+      }
+
+      // ── 5. MIGRACIÓN DE DATOS (Legacy -> New) ──────────────────────────
+      this.log('');
+      this.log('🔄 Iniciando migración de datos críticos...');
       
-      // Asegurar reglas de Auth y DNI Identity
-      await patchCol(opId, { 
-        listRule: "@request.auth.id != ''", 
-        viewRule: "@request.auth.id != ''", 
-        manageRule: "@request.auth.id != ''",
-        authOptions: { identityFields: ['email', 'dni'], allowPasswordAuth: true }
-      });
-      this.log('  ✅ "operadores" — esquema y reglas actualizados.');
-    }
-
-    // ── 3. historial_acciones ──────────────────────────────────────────
-    this.log('');
-    this.log('⏳ [3/4] Verificando "historial_acciones"...');
-    const histCol = await getCol('historial_acciones');
-    if (histCol) {
-      this.log('  ✅ Historial verificado.');
-    }
-
-    // ── 4. reportes_generados ──────────────────────────────────────────
-    this.log('');
-    this.log('⏳ [4/4] Verificando "reportes_generados"...');
-    const repCol = await getCol('reportes_generados');
-    if (repCol) {
-      await patchCol(repCol.id, { viewRule: "" });
-      this.log('  ✅ Reportes parametrizados.');
-    }
-
-    // ── 5. MIGRACIÓN DE DATOS (Legacy -> New) ──────────────────────────
-    this.log('');
-    this.log('🔄 Iniciando migración de datos críticos...');
-    
-    // Migrar Expedientes (operador_legacy -> operador)
-    if (expCol) {
-      const legacyExp = await this.pbService.pb.collection(expId).getFullList({
-        filter: 'operador_legacy != "" && (operador = null || operador = "")',
-        requestKey: 'migracion_exp'
-      });
-      if (legacyExp.length > 0) {
-        this.log(`  📦 Reparando ${legacyExp.length} relaciones de operador...`);
-        for (const rec of legacyExp) {
-          try {
-            await this.pbService.pb.collection(expId).update(rec.id, {
-              operador: rec['operador_legacy']
-            });
-          } catch (e) {}
-        }
-      }
-      
-      // Limpieza: Eliminar campo legacy si ya no hay datos pendientes
-      const remaining = await this.pbService.pb.collection(expId).getList(1, 1, {
-        filter: 'operador_legacy != "" && (operador = null || operador = "")'
-      });
-      if (remaining.totalItems === 0) {
-        this.log('  🧹 Limpiando esquema: Eliminando "operador_legacy"...');
-        const fresh = await getCol('expedientes');
-        if (fresh) {
-          const cleanFields = fresh.fields.filter((f: any) => f.name !== 'operador_legacy');
-          await patchCol(expId, { fields: cleanFields });
-        }
-      }
-    }
-
-    // Migrar Operadores (sede_legacy -> sede)
-    if (opColActual) {
-      const legacyOps = await this.pbService.pb.collection(opId).getFullList({
-        filter: 'sede_legacy != "" && sede = ""',
-        requestKey: 'migracion_ops'
-      });
-      if (legacyOps.length > 0) {
-        this.log(`  👤 Reparando ${legacyOps.length} sedes de operadores...`);
-        for (const rec of legacyOps) {
-          try {
-            await this.pbService.pb.collection(opId).update(rec.id, {
-              sede: rec['sede_legacy']
-            });
-          } catch (e) {}
+      // Migrar Expedientes (operador_legacy -> operador)
+      if (expCol) {
+        const freshExp = await getCol('expedientes');
+        const hasOpLegacy = freshExp?.fields?.some((f: any) => f.name === 'operador_legacy');
+        
+        if (hasOpLegacy) {
+          const legacyExp = await this.pbService.pb.collection(expId).getFullList({
+            filter: 'operador_legacy != ""',
+            requestKey: 'migracion_exp'
+          }).catch(() => []); // Ignorar errores si el filtro falla
+          
+          if (legacyExp.length > 0) {
+            this.log(`  📦 Reparando ${legacyExp.length} relaciones de operador...`);
+            for (const rec of legacyExp) {
+              if (!rec['operador']) {
+                try {
+                  await this.pbService.pb.collection(expId).update(rec.id, {
+                    operador: rec['operador_legacy']
+                  });
+                } catch (e) {}
+              }
+            }
+          }
+          
+          // Limpieza: Eliminar campo legacy si ya no hay datos pendientes
+          const remaining = await this.pbService.pb.collection(expId).getList(1, 1, {
+            filter: 'operador_legacy != "" && operador = ""',
+            requestKey: 'migracion_exp_rem'
+          }).catch(() => ({ totalItems: 0 }));
+          
+          if (remaining.totalItems === 0) {
+            this.log('  🧹 Limpiando esquema: Eliminando "operador_legacy"...');
+            if (freshExp) {
+              const cleanFields = freshExp.fields.filter((f: any) => f.name !== 'operador_legacy');
+              await patchCol(expId, { fields: cleanFields });
+            }
+          }
         }
       }
 
-      // Limpieza: Eliminar campo legacy si ya no hay datos pendientes
-      const remaining = await this.pbService.pb.collection(opId).getList(1, 1, {
-        filter: 'sede_legacy != "" && sede = ""'
-      });
-      if (remaining.totalItems === 0) {
-        this.log('  🧹 Limpiando esquema: Eliminando "sede_legacy"...');
-        const fresh = await getCol('operadores');
-        if (fresh) {
-          const cleanFields = fresh.fields.filter((f: any) => f.name !== 'sede_legacy');
-          await patchCol(opId, { fields: cleanFields });
+      // Migrar Operadores (sede_legacy -> sede)
+      if (opColActual) {
+        const freshOp = await getCol('operadores');
+        const hasSedeLegacy = freshOp?.fields?.some((f: any) => f.name === 'sede_legacy');
+
+        if (hasSedeLegacy) {
+          const legacyOps = await this.pbService.pb.collection(opId).getFullList({
+            filter: 'sede_legacy != "" && sede = ""',
+            requestKey: 'migracion_ops'
+          }).catch(() => []);
+          
+          if (legacyOps.length > 0) {
+            this.log(`  👤 Reparando ${legacyOps.length} sedes de operadores...`);
+            for (const rec of legacyOps) {
+              try {
+                await this.pbService.pb.collection(opId).update(rec.id, {
+                  sede: rec['sede_legacy']
+                });
+              } catch (e) {}
+            }
+          }
+
+          // Limpieza: Eliminar campo legacy si ya no hay datos pendientes
+          const remaining = await this.pbService.pb.collection(opId).getList(1, 1, {
+            filter: 'sede_legacy != "" && sede = ""',
+            requestKey: 'migracion_ops_rem'
+          }).catch(() => ({ totalItems: 0 }));
+          
+          if (remaining.totalItems === 0) {
+            this.log('  🧹 Limpiando esquema: Eliminando "sede_legacy"...');
+            if (freshOp) {
+              const cleanFields = freshOp.fields.filter((f: any) => f.name !== 'sede_legacy');
+              await patchCol(opId, { fields: cleanFields });
+            }
+          }
         }
       }
-    }
 
-    this.log('');
-    this.log('🎉 Sincronización completada. Sistema único y optimizado.');
-    this.isRunning.set(false);
+      this.log('');
+      this.log('🎉 Sincronización completada. Sistema único y optimizado.');
+    } catch (err: any) {
+      this.log(`❌ Error durante la sincronización: ${err.message || String(err)}`);
+    } finally {
+      this.isRunning.set(false);
+    }
   }
 
   // -------------------------------------------------------------------
