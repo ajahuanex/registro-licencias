@@ -45,160 +45,249 @@ interface Stats {
   ],
   providers: [DatePipe],
   template: `
-<div class="page-wrapper fade-in">
+<div class="report-wrapper fade-in">
+  
+  <header class="report-header mat-elevation-z1">
+    <div class="header-main">
+      <div class="title-section">
+        <mat-icon class="title-icon">analytics</mat-icon>
+        <div>
+          <h1>Reporte Mensual de Expedientes</h1>
+          <p class="subtitle">Análisis consolidado de trámites de licencias de conducir por período</p>
+        </div>
+      </div>
+      
+      <div class="header-filters">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="period-select">
+          <mat-label>Mes</mat-label>
+          <mat-select [(ngModel)]="selectedMonth" (selectionChange)="loadData()">
+            @for(m of meses; track m.value) {
+              <mat-option [value]="m.value">{{m.label}}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
 
-  <!-- Header -->
-  <div class="page-header">
-    <div>
-      <h1><mat-icon>bar_chart</mat-icon> Reporte Mensual de Expedientes</h1>
-      <p>Análisis consolidado de trámites de licencias de conducir por período</p>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="year-select">
+          <mat-label>Año</mat-label>
+          <mat-select [(ngModel)]="selectedYear" (selectionChange)="loadData()">
+            @for(y of years; track y) { <mat-option [value]="y">{{y}}</mat-option> }
+          </mat-select>
+        </mat-form-field>
+
+        <button mat-icon-button (click)="loadData()" matTooltip="Actualizar datos">
+          <mat-icon [class.rolling]="isLoading()">sync</mat-icon>
+        </button>
+
+        <button mat-flat-button color="primary" class="export-btn" [matMenuTriggerFor]="exportMenu" [disabled]="records().length === 0">
+          <mat-icon>file_download</mat-icon> Exportar
+        </button>
+        <mat-menu #exportMenu="matMenu" xPosition="before">
+          <button mat-menu-item (click)="exportExcel()">
+            <mat-icon style="color: #16a34a">table_view</mat-icon>
+            <span>Hoja de Cálculo (Excel)</span>
+          </button>
+          <button mat-menu-item (click)="exportPDF()">
+            <mat-icon style="color: #ef4444">picture_as_pdf</mat-icon>
+            <span>Documento PDF (Oficial)</span>
+          </button>
+        </mat-menu>
+      </div>
     </div>
-    <div class="header-actions">
-      <!-- Period selector -->
-      <mat-form-field appearance="outline" subscriptSizing="dynamic" style="width:130px">
-        <mat-label>Mes</mat-label>
-        <mat-select [(ngModel)]="selectedMonth" (ngModelChange)="loadData()">
-          @for(m of meses; track m.value) {
-            <mat-option [value]="m.value">{{m.label}}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-      <mat-form-field appearance="outline" subscriptSizing="dynamic" style="width:100px">
-        <mat-label>Año</mat-label>
-        <mat-select [(ngModel)]="selectedYear" (ngModelChange)="loadData()">
-          @for(y of years; track y) { <mat-option [value]="y">{{y}}</mat-option> }
-        </mat-select>
-      </mat-form-field>
-      <button mat-icon-button matTooltip="Actualizar" (click)="loadData()">
-        <mat-icon [class.rolling]="isLoading()">sync</mat-icon>
-      </button>
-      <button mat-raised-button color="primary" [matMenuTriggerFor]="exportMenu" [disabled]="records().length===0">
-        <mat-icon>file_download</mat-icon> Exportar
-      </button>
-      <mat-menu #exportMenu="matMenu">
-        <button mat-menu-item (click)="exportExcel()"><mat-icon>table_view</mat-icon> Excel (.xlsx)</button>
-        <button mat-menu-item (click)="exportPDF()"><mat-icon>picture_as_pdf</mat-icon> PDF</button>
-      </mat-menu>
-    </div>
-  </div>
+  </header>
 
   @if (isLoading()) {
-    <div class="loading-center"><div class="spinner"></div><span>Cargando datos del período...</span></div>
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <span>Preparando análisis estadístico...</span>
+    </div>
   } @else if (records().length === 0) {
     <div class="empty-state">
-      <mat-icon>inbox</mat-icon>
-      <p>No hay expedientes registrados para <strong>{{ mesLabel }} {{ selectedYear }}</strong></p>
+      <mat-icon>summarize</mat-icon>
+      <p>No se encontraron registros para <strong>{{ mesLabel }} {{ selectedYear }}</strong></p>
     </div>
   } @else {
-
-    <!-- Summary Cards -->
-    <div class="cards-grid">
-      <mat-card class="stat-card total">
-        <mat-icon>folder_open</mat-icon>
-        <div class="stat-value">{{ stats().total }}</div>
-        <div class="stat-label">Total Expedientes</div>
-      </mat-card>
+    
+    <!-- Summary Row -->
+    <div class="summary-cards">
+      <div class="summary-card total mat-elevation-z2">
+        <div class="card-icon"><mat-icon>folder_special</mat-icon></div>
+        <div class="card-data">
+          <span class="value">{{ stats().total }}</span>
+          <span class="label">TOTAL EXPEDIENTES</span>
+        </div>
+      </div>
+      
       @for(item of tramiteItems(); track item.key) {
-        <mat-card class="stat-card">
-          <mat-icon>{{ tramiteIcon(item.key) }}</mat-icon>
-          <div class="stat-value">{{ item.count }}</div>
-          <div class="stat-label">{{ item.key }}</div>
-          <div class="stat-pct">{{ pct(item.count) }}%</div>
-        </mat-card>
+        <div class="summary-card mat-elevation-z1">
+          <div class="card-icon"><mat-icon>{{ tramiteIcon(item.key) }}</mat-icon></div>
+          <div class="card-data">
+            <span class="value">{{ item.count }}</span>
+            <span class="label">{{ item.key }}</span>
+            <span class="percentage">{{ pct(item.count) }}%</span>
+          </div>
+        </div>
       }
     </div>
 
-    <!-- Charts Row 1 -->
-    <div class="charts-row">
-      <mat-card class="chart-card wide">
-        <div class="chart-title"><mat-icon>timeline</mat-icon> Expedientes por Semana</div>
-        <canvas #chartSemana></canvas>
-      </mat-card>
-      <mat-card class="chart-card">
-        <div class="chart-title"><mat-icon>donut_large</mat-icon> Por Categoría</div>
-        <canvas #chartCategoria></canvas>
-      </mat-card>
-    </div>
+    <div class="dashboard-grid">
+      <!-- Row 1 -->
+      <div class="grid-row">
+        <mat-card class="chart-card mat-elevation-z1 main-chart">
+          <div class="chart-header">
+            <h3><mat-icon>show_chart</mat-icon> Expedientes por Semana</h3>
+          </div>
+          <mat-card-content>
+            <div class="canvas-wrapper">
+              <canvas #chartSemana></canvas>
+            </div>
+          </mat-card-content>
+        </mat-card>
 
-    <!-- Charts Row 2 -->
-    <div class="charts-row">
-      <mat-card class="chart-card">
-        <div class="chart-title"><mat-icon>location_on</mat-icon> Por Sede</div>
-        <canvas #chartSede></canvas>
-      </mat-card>
-      <mat-card class="chart-card wide">
-        <div class="chart-title"><mat-icon>people</mat-icon> Producción por Operador</div>
-        <canvas #chartOperador></canvas>
-      </mat-card>
-    </div>
-
-    <!-- Summary Table -->
-    <mat-card class="table-card">
-      <div class="chart-title"><mat-icon>table_chart</mat-icon> Resumen Cruzado: Trámite × Estado</div>
-      <div class="table-scroll">
-        <table class="summary-table">
-          <thead>
-            <tr>
-              <th>Trámite</th>
-              @for(e of estadoKeys; track e) { <th>{{e}}</th> }
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for(row of tramiteEstadoMatrix(); track row.tramite) {
-              <tr>
-                <td><strong>{{row.tramite}}</strong></td>
-                @for(e of estadoKeys; track e) { <td>{{ row.estados[e] || 0 }}</td> }
-                <td><strong>{{row.total}}</strong></td>
-              </tr>
-            }
-          </tbody>
-        </table>
+        <mat-card class="chart-card mat-elevation-z1">
+          <div class="chart-header">
+            <h3><mat-icon>pie_chart</mat-icon> Por Categoría</h3>
+          </div>
+          <mat-card-content>
+             <div class="canvas-wrapper donut">
+                <canvas #chartCategoria></canvas>
+             </div>
+          </mat-card-content>
+        </mat-card>
       </div>
-    </mat-card>
+
+      <!-- Row 2 -->
+      <div class="grid-row">
+        <mat-card class="chart-card mat-elevation-z1">
+          <div class="chart-header">
+            <h3><mat-icon>adjust</mat-icon> Por Sede</h3>
+          </div>
+          <mat-card-content>
+            <div class="canvas-wrapper donut">
+              <canvas #chartSede></canvas>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="chart-card mat-elevation-z1 main-chart">
+          <div class="chart-header">
+            <h3><mat-icon>groups</mat-icon> Producción por Operador</h3>
+          </div>
+          <mat-card-content>
+            <div class="canvas-wrapper">
+              <canvas #chartOperador></canvas>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+
+      <!-- Matrix Table -->
+      <mat-card class="matrix-card mat-elevation-z1">
+        <div class="chart-header">
+          <h3><mat-icon>grid_view</mat-icon> Resumen Cruzado: Trámite × Estado</h3>
+        </div>
+        <div class="table-container">
+          <table class="premium-table">
+            <thead>
+              <tr>
+                <th>Trámite</th>
+                @for(e of estadoKeys; track e) { <th>{{e}}</th> }
+                <th class="total-col">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for(row of tramiteEstadoMatrix(); track row.tramite) {
+                <tr>
+                  <td class="row-label">{{row.tramite}}</td>
+                  @for(e of estadoKeys; track e) { 
+                    <td [class.zero]="(row.estados[e]||0) === 0">
+                      {{ row.estados[e] || 0 }}
+                    </td> 
+                  }
+                  <td class="total-col">{{row.total}}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </mat-card>
+    </div>
   }
 </div>
   `,
   styles: [`
-    .page-wrapper { padding: 1.5rem; max-width: 1300px; margin: 0 auto; }
-    .page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
-    .page-header h1 { display: flex; align-items: center; gap: 8px; font-size: 1.4rem; margin: 0 0 4px; }
-    .page-header p { color: #666; margin: 0; font-size: 0.9rem; }
-    .header-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
-    .rolling { animation: spin 0.8s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-    .fade-in { animation: fadeIn 0.4s ease-out; }
+    .report-wrapper { padding: 2rem; max-width: 1400px; margin: 0 auto; background: #f8fafc; min-height: 100vh; }
+    
+    // Header
+    .report-header {
+      background: white; border-radius: 16px; padding: 1.5rem 2rem; margin-bottom: 2rem;
+      .header-main { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1.5rem; }
+      .title-section { display: flex; align-items: center; gap: 1.25rem; }
+      .title-icon { font-size: 36px; width: 36px; height: 36px; color: #1e3a8a; }
+      h1 { font-size: 1.5rem; font-weight: 700; color: #0f172a; margin: 0; }
+      .subtitle { color: #64748b; margin: 2px 0 0; font-size: 0.9rem; }
+      .header-filters { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+      .export-btn { height: 48px; padding: 0 1.5rem; border-radius: 10px; font-weight: 600; }
+    }
 
-    .loading-center { display: flex; flex-direction: column; align-items: center; padding: 4rem; gap: 1rem; color: #666; }
-    .spinner { width: 40px; height: 40px; border: 3px solid #e0e0e0; border-top-color: #1a4f8f; border-radius: 50%; animation: spin 0.8s linear infinite; }
-    .empty-state { text-align: center; padding: 4rem; color: #999; mat-icon { font-size: 48px; width: 48px; height: 48px; margin-bottom: 1rem; } }
+    // Summary Cards
+    .summary-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2.5rem; }
+    .summary-card {
+      background: white; border-radius: 16px; padding: 1.5rem; display: flex; align-items: center; gap: 1.25rem;
+      transition: transform 0.2s;
+      &:hover { transform: translateY(-4px); }
+      .card-icon { 
+        width: 52px; height: 52px; border-radius: 12px; background: #f1f5f9; 
+        display: flex; align-items: center; justify-content: center;
+        mat-icon { color: #1e3a8a; font-size: 24px; width: 24px; height: 24px; }
+      }
+      .card-data { display: flex; flex-direction: column; }
+      .value { font-size: 1.75rem; font-weight: 800; color: #0f172a; line-height: 1.1; }
+      .label { font-size: 0.7rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
+      .percentage { font-size: 0.8rem; font-weight: 600; color: #3b82f6; margin-top: 2px; }
+      
+      &.total {
+        background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); color: white;
+        .card-icon { background: rgba(255,255,255,0.15); mat-icon { color: white; } }
+        .value { color: white; }
+        .label { color: rgba(255,255,255,0.8); }
+      }
+    }
 
-    .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-    .stat-card { padding: 1.25rem; text-align: center; border-radius: 12px !important; }
-    .stat-card mat-icon { font-size: 28px; width: 28px; height: 28px; color: #1a4f8f; margin-bottom: 0.5rem; }
-    .stat-card.total { background: linear-gradient(135deg, #0a3d62, #1a7fbe); color: white; }
-    .stat-card.total mat-icon { color: rgba(255,255,255,0.8); }
-    .stat-value { font-size: 2rem; font-weight: 700; line-height: 1; }
-    .stat-label { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; opacity: 0.85; margin-top: 4px; }
-    .stat-pct { font-size: 0.85rem; color: #1a7fbe; font-weight: 600; margin-top: 2px; }
-    .stat-card.total .stat-pct { color: rgba(255,255,255,0.7); }
+    // Grid System
+    .dashboard-grid { display: flex; flex-direction: column; gap: 2rem; }
+    .grid-row { display: grid; grid-template-columns: 1.6fr 1fr; gap: 1.5rem; }
+    .grid-row:nth-child(2) { grid-template-columns: 1fr 1.6fr; }
+    
+    .chart-card {
+      border-radius: 16px !important; padding: 1.5rem; background: white;
+      .chart-header { margin-bottom: 1.5rem; h3 { display: flex; align-items: center; gap: 8px; font-size: 1.1rem; font-weight: 700; color: #0f172a; margin: 0; mat-icon { color: #3b82f6; } } }
+    }
+    .canvas-wrapper { height: 280px; position: relative; width: 100%; display: flex; align-items: center; justify-content: center; }
+    .canvas-wrapper.donut { height: 240px; }
 
-    .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; margin-bottom: 1rem; }
-    .charts-row:nth-child(even) { grid-template-columns: 1fr 2fr; }
-    .chart-card { padding: 1.25rem; border-radius: 12px !important; }
-    .chart-card.wide { }
-    .chart-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #0a3d62; margin-bottom: 0.75rem; font-size: 0.95rem; }
-    .chart-title mat-icon { font-size: 18px; width: 18px; height: 18px; }
-    canvas { max-height: 260px; }
+    // Table
+    .matrix-card {
+      border-radius: 16px !important; padding: 1.5rem; background: white;
+      .table-container { overflow-x: auto; margin-top: 1rem; border-radius: 12px; border: 1px solid #e2e8f0; }
+    }
+    .premium-table {
+      width: 100%; border-collapse: collapse; font-size: 0.85rem;
+      th { background: #0f172a; color: white; padding: 1rem 0.75rem; font-weight: 600; text-align: center; }
+      td { padding: 0.85rem 0.75rem; text-align: center; border-bottom: 1px solid #f1f5f9; color: #334155; }
+      .row-label { text-align: left; font-weight: 700; color: #0f172a; padding-left: 1.25rem; }
+      .total-col { background: #f8fafc; font-weight: 700; color: #0f172a; width: 80px; border-left: 1px solid #e2e8f0; }
+      tr:last-child td { border-bottom: none; }
+      tr:hover td { background: #f1f5f9; }
+      .zero { color: #cbd5e1; font-weight: 300; }
+    }
 
-    .table-card { padding: 1.25rem; margin-top: 1rem; border-radius: 12px !important; }
-    .table-scroll { overflow-x: auto; }
-    .summary-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    .summary-table th { background: #0a3d62; color: white; padding: 0.5rem 1rem; text-align: center; font-weight: 600; }
-    .summary-table td { padding: 0.5rem 1rem; border-bottom: 1px solid #f0f0f0; text-align: center; }
-    .summary-table tr:hover td { background: #f8fafc; }
-    .summary-table td:first-child { text-align: left; }
+    // States
+    .loading-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 300px; gap: 1rem; color: #64748b; }
+    .spinner { width: 44px; height: 44px; border: 4px solid #f1f5f9; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .empty-state { text-align: center; padding: 5rem; color: #94a3b8; mat-icon { font-size: 56px; width: 56px; height: 56px; margin-bottom: 1rem; color: #e2e8f0; } }
+
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @media (max-width: 1024px) { .grid-row { grid-template-columns: 1fr !important; } .header-main { flex-direction: column; align-items: stretch; } }
   `]
 })
 export class ReporteMensualComponent implements OnInit {
@@ -326,86 +415,151 @@ export class ReporteMensualComponent implements OnInit {
 
   private renderCharts() {
     const s = this.stats();
-    const PALETTE = ['#0a3d62','#1a7fbe','#2ecc71','#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22','#3498db','#e91e63'];
+    // Premium Palette: Deep Blue, Blue, Emerald, Amber, Rose, Violet, Cyan
+    const PALETTE = ['#1e3a8a', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+    const CHART_FONT = { family: "'Inter', 'Roboto', sans-serif", size: 11 };
 
-    // Semana
+    // 1. Semana (Bar)
     if (this.chartSemanaRef) {
       const c = new Chart(this.chartSemanaRef.nativeElement, {
         type: 'bar',
         data: {
           labels: Object.keys(s.porSemana),
-          datasets: [{ label: 'Expedientes', data: Object.values(s.porSemana),
-            backgroundColor: '#1a7fbe', borderRadius: 6, borderSkipped: false }]
+          datasets: [{ 
+            label: 'Expedientes', 
+            data: Object.values(s.porSemana),
+            backgroundColor: '#1e3a8a', 
+            borderRadius: 8, 
+            borderSkipped: false,
+            barThickness: 30
+          }]
         },
-        options: { responsive: true, plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        options: { 
+          responsive: true, 
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { 
+            y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1, font: CHART_FONT } },
+            x: { grid: { display: false }, ticks: { font: CHART_FONT } }
+          } 
+        }
       });
       this.charts.push(c);
     }
 
-    // Categoría
+    // 2. Categoría (Doughnut)
     if (this.chartCategoriaRef) {
-      const keys = Object.keys(s.porCategoria);
+      const keys = Object.keys(s.porCategoria).sort((a,b) => s.porCategoria[b] - s.porCategoria[a]);
       const c = new Chart(this.chartCategoriaRef.nativeElement, {
         type: 'doughnut',
         data: {
           labels: keys,
-          datasets: [{ data: keys.map(k => s.porCategoria[k]), backgroundColor: PALETTE }]
+          datasets: [{ 
+            data: keys.map(k => s.porCategoria[k]), 
+            backgroundColor: PALETTE,
+            borderWidth: 2,
+            borderColor: '#ffffff'
+          }]
         },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        options: { 
+          responsive: true, 
+          maintainAspectRatio: false,
+          cutout: '65%',
+          plugins: { 
+            legend: { 
+              position: 'bottom', 
+              labels: { usePointStyle: true, pointStyle: 'circle', padding: 15, font: CHART_FONT } 
+            } 
+          } 
+        }
       });
       this.charts.push(c);
     }
 
-    // Sede
+    // 3. Sede (Pie)
     if (this.chartSedeRef) {
       const keys = Object.keys(s.porSede);
       const c = new Chart(this.chartSedeRef.nativeElement, {
         type: 'pie',
         data: {
           labels: keys,
-          datasets: [{ data: keys.map(k => s.porSede[k]), backgroundColor: ['#0a3d62','#1a7fbe','#2ecc71'] }]
+          datasets: [{ 
+            data: keys.map(k => s.porSede[k]), 
+            backgroundColor: ['#1e3a8a', '#3b82f6', '#94a3b8'],
+            borderWidth: 2,
+            borderColor: '#ffffff'
+          }]
         },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        options: { 
+          responsive: true, 
+          maintainAspectRatio: false,
+          plugins: { 
+            legend: { 
+              position: 'bottom', 
+              labels: { usePointStyle: true, pointStyle: 'circle', padding: 15, font: CHART_FONT } 
+            } 
+          } 
+        }
       });
       this.charts.push(c);
     }
 
-    // Operador
+    // 4. Operador (Horizontal Bar)
     if (this.chartOperadorRef) {
-      const entries = Object.entries(s.porOperador).sort((a,b) => b[1]-a[1]).slice(0, 10);
+      const entries = Object.entries(s.porOperador).sort((a,b) => b[1]-a[1]).slice(0, 8);
       const c = new Chart(this.chartOperadorRef.nativeElement, {
         type: 'bar',
         data: {
           labels: entries.map(e => e[0]),
-          datasets: [{ label: 'Expedientes', data: entries.map(e => e[1]),
-            backgroundColor: PALETTE, borderRadius: 6, borderSkipped: false }]
+          datasets: [{ 
+            label: 'Expedientes', 
+            data: entries.map(e => e[1]),
+            backgroundColor: '#3b82f6', 
+            borderRadius: 6, 
+            borderSkipped: false,
+            barThickness: 20
+          }]
         },
-        options: { indexAxis: 'y', responsive: true,
+        options: { 
+          indexAxis: 'y', 
+          responsive: true,
+          maintainAspectRatio: false,
           plugins: { legend: { display: false } },
-          scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+          scales: { 
+            x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1, font: CHART_FONT } },
+            y: { grid: { display: false }, ticks: { font: CHART_FONT } }
+          } 
+        }
       });
       this.charts.push(c);
     }
   }
 
   exportExcel() {
-    const rows = this.records().map((r, i) => ({
-      'N°': i + 1,
-      'Fecha': this.datePipe.transform(r['fecha_registro'], 'dd/MM/yyyy HH:mm') || '',
-      'DNI': r['dni_solicitante'],
-      'Apellidos y Nombres': r['apellidos_nombres'],
-      'Trámite': r['tramite'],
-      'Categoría': r['categoria'],
-      'Sede': r['lugar_entrega'],
-      'Estado': r['estado'],
-      'Operador': r.expand?.['operador']?.nombre || '',
-      'Observaciones': r['observaciones'] || ''
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const s = this.stats();
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `${this.mesLabel} ${this.selectedYear}`);
-    XLSX.writeFile(wb, `Reporte_Mensual_${this.mesLabel}_${this.selectedYear}.xlsx`);
+
+    // Hoja 1: Resumen General
+    const resumenGeneral = [
+      { 'Métrica': 'Total Expedientes', 'Valor': s.total },
+      ...Object.entries(s.porTramite).map(([t, c]) => ({ 'Métrica': t, 'Valor': c })),
+      ...Object.entries(s.porCategoria).map(([t, c]) => ({ 'Métrica': t, 'Valor': c }))
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumenGeneral), `Resumen General`);
+
+    // Hoja 2: Matriz Cruzada (Trámite vs Estado)
+    const matriz = this.tramiteEstadoMatrix().map(r => ({
+      'Trámite': r.tramite,
+      ...this.estadoKeys.reduce((acc, k) => ({...acc, [k]: r.estados[k] || 0}), {}),
+      'TOTAL': r.total
+    }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matriz), `Trámites x Estado`);
+
+    // Hoja 3: Por Operador
+    const ops = Object.entries(s.porOperador).sort((a,b) => b[1]-a[1]).map(([o, c]) => ({ 'Operador': o, 'Expedientes': c }));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ops), `Por Operador`);
+
+    XLSX.writeFile(wb, `Reporte_Estadistico_Mensual_${this.mesLabel}_${this.selectedYear}.xlsx`);
   }
 
   async exportPDF() {
@@ -458,24 +612,22 @@ export class ReporteMensualComponent implements OnInit {
       headStyles: { fillColor: [10, 61, 98] }, styles: { fontSize: 9 }
     });
 
-    // Second page: detail
-    doc.addPage();
-    doc.setFontSize(11); doc.text('Detalle de Expedientes', 14, 15);
+    // Resumen Cruzado (Matriz)
+    const y2 = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFontSize(11); doc.text('Resumen Cruzado: Trámite por Estado', 14, y2);
     autoTable(doc, {
-      startY: 20,
-      head: [['Fecha','DNI','Solicitante','Trámite','Categoría','Sede','Estado','Operador']],
-      body: this.records().map(r => [
-        this.datePipe.transform(r['fecha_registro'], 'dd/MM/yy HH:mm') || '',
-        r['dni_solicitante'], r['apellidos_nombres'],
-        r['tramite'], r['categoria'], r['lugar_entrega'],
-        r['estado'] || 'EN PROCESO',
-        r.expand?.['operador']?.nombre || ''
+      startY: y2 + 5,
+      head: [['Trámite', ...this.estadoKeys, 'Total']],
+      body: this.tramiteEstadoMatrix().map(r => [
+        r.tramite,
+        ...this.estadoKeys.map(k => r.estados[k] || 0),
+        r.total
       ]),
-      headStyles: { fillColor: [10, 61, 98] }, styles: { fontSize: 7 },
+      headStyles: { fillColor: [10, 61, 98] }, styles: { fontSize: 8 },
       alternateRowStyles: { fillColor: [244, 247, 246] }
     });
 
-    doc.save(`Reporte_Mensual_${this.mesLabel}_${this.selectedYear}.pdf`);
+    doc.save(`Estadistica_Mensual_${this.mesLabel}_${this.selectedYear}.pdf`);
     this.snackBar.open('PDF generado y registrado', 'OK', { duration: 3000, panelClass: ['success-snackbar'] });
   }
 }

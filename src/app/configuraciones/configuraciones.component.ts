@@ -1,6 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, ReactiveFormsModule, Validators, FormControl } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
@@ -13,7 +13,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { PocketbaseService } from '../core/services/pocketbase.service';
 import { ExpedienteService } from '../core/services/expediente.service';
-import { ESTADOS_SISTEMA, PERFILES_SISTEMA, SEDES_SISTEMA } from '../core/constants/app.constants';
+import { ESTADOS_SISTEMA, PERFILES_SISTEMA } from '../core/constants/app.constants';
 
 // ─── Sync Modal ───────────────────────────────────────────────────────────────
 @Component({
@@ -181,6 +181,14 @@ export class AdminAuthModal {
             needsUpdate = true;
           }
         }
+        
+        // fecha_entrega check
+        const feField = fields.find((f: any) => f.name === 'fecha_entrega');
+        if (!feField) {
+          this.log('  ⚠️ Añadiendo campo "fecha_entrega" al esquema...');
+          fields.push({ name: 'fecha_entrega', type: 'date', required: false });
+          needsUpdate = true;
+        }
 
         if (needsUpdate) {
           await patchCol(expId, { fields });
@@ -202,7 +210,8 @@ export class AdminAuthModal {
             { name: 'estado', type: 'select', required: true, values: ESTADOS_SISTEMA },
             { name: 'categoria', type: 'text', required: true },
             { name: 'lugar_entrega', type: 'text', required: true },
-            { name: 'fecha_registro', type: 'date', required: true }
+            { name: 'fecha_registro', type: 'date', required: true },
+            { name: 'fecha_entrega', type: 'date', required: false }
           ]
         });
       }
@@ -214,16 +223,15 @@ export class AdminAuthModal {
         let fields = [...opColActual.fields];
         let needsUpdate = false;
 
-        // sede: text -> select (v0.23 workaround)
+        // El campo sede debe mantenerse como texto libre para permitir sedes dinámicas
         const sdField = fields.find((f: any) => f.name === 'sede');
-        if (sdField && sdField.type !== 'select') {
-          this.log('  ⚠️ Migrando campo "sede" a selección...');
-          sdField.name = 'sede_legacy';
-          fields.push({ 
-            name: 'sede', type: 'select', required: true, 
-            options: { values: SEDES_SISTEMA, maxSelect: 1 } 
-          });
-          needsUpdate = true;
+        if (sdField && sdField.type !== 'text') {
+            this.log('  ⚠️ Migrando campo "sede" a texto libre (soporte dinámico)...');
+            sdField.name = 'sede_legacy_select_sync';
+            fields.push({
+              name: 'sede', type: 'text', required: false
+            });
+            needsUpdate = true;
         }
 
         const pfField = fields.find((f: any) => f.name === 'perfil');
@@ -239,12 +247,12 @@ export class AdminAuthModal {
         }
         if (needsUpdate) await patchCol(opId, { fields });
         
-        // Asegurar reglas de Auth y DNI Identity
+        // Asegurar reglas de Auth y DNI Identity (Soporte pocketbase v0.23)
         await patchCol(opId, { 
           listRule: "@request.auth.id != ''", 
           viewRule: "@request.auth.id != ''", 
           manageRule: "@request.auth.id != ''",
-          authOptions: { identityFields: ['email', 'dni'], allowPasswordAuth: true }
+          passwordAuth: { identityFields: ['email', 'dni'], enabled: true }
         });
         this.log('  ✅ "operadores" — esquema y reglas actualizados.');
       }
@@ -434,26 +442,34 @@ export class AdminAuthModal {
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
       return fetch(this.pbService.pb.baseURL + path, { ...fetchOpts, headers: { ...headers, ...(fetchOpts.headers || {}) } });
     };
-    const deleteCol = async (name: string) => {
-      const r = await doFetch(`/api/collections/${name}`, { method: 'DELETE', authToken: token });
-      if (!r.ok) {
-        if (r.status === 404) {
-          this.log(`  ℹ️ Colección "${name}" no existía (se omite)`);
-        } else {
-          this.log(`  ⚠ DELETE ${name}: ${await r.text()}`);
+    const deleteColRecords = async (name: string) => {
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const r = await doFetch(`/api/collections/${name}/records?page=${page}&perPage=500`, { method: 'GET', authToken: token });
+        if (!r.ok) {
+           if (r.status !== 404) this.log(`  ⚠ GET Records ${name}: ${await r.text()}`);
+           break;
         }
-      } else {
-        this.log(`  ✅ Colección "${name}" eliminada.`);
+        const data = await r.json();
+        if (!data.items || data.items.length === 0) break;
+        
+        for (const item of data.items) {
+           await doFetch(`/api/collections/${name}/records/${item.id}`, { method: 'DELETE', authToken: token });
+        }
+        hasMore = data.totalPages > page;
       }
-      return r.ok || r.status === 404;
+      this.log(`  ✅ Registros de colección "${name}" borrados de manera segura.`);
+      return true;
     };
 
-    // ELIMINACIÓN EN ORDEN DE DEPENDENCIA (Hijas primero)
-    const collectionsToDelete = ['reportes_generados', 'historial_acciones', 'expedientes', 'operadores'];
+    // ELIMINACIÓN DE REGISTROS EN ORDEN DE DEPENDENCIA
+    // NOTA: Se excluye "operadores" y "sedes" para evitar borrar a los administradores OTI o configuraciones clave.
+    const collectionsToClear = ['reportes_generados', 'historial_acciones', 'expedientes'];
     
-    this.log('🗑️ Eliminando colecciones (orden de dependencia)...');
-    for (const col of collectionsToDelete) {
-      await deleteCol(col);
+    this.log('🗑️ Vaciando datos de colecciones (conservando tablas)...');
+    for (const col of collectionsToClear) {
+      await deleteColRecords(col);
     }
     
     this.log('✅ Base de datos limpia. Re-sincronizando...');
@@ -466,7 +482,7 @@ export class AdminAuthModal {
 @Component({
   selector: 'app-configuraciones',
   standalone: true,
-  imports: [CommonModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule, MatChipsModule],
+  imports: [CommonModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule, MatChipsModule, ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatProgressBarModule],
   template: `
 <div class="page-wrapper fade-in">
   <div class="header-actions">
@@ -547,6 +563,45 @@ export class AdminAuthModal {
       </mat-card-actions>
     </mat-card>
 
+    <!-- Card 4: Gestión de Sedes -->
+    <mat-card class="settings-card mat-elevation-z3">
+      <mat-card-header>
+        <mat-icon mat-card-avatar color="accent">business</mat-icon>
+        <mat-card-title>Gestión de Sedes (Dinámico)</mat-card-title>
+        <mat-card-subtitle>Añadir nuevas sucursales u oficinas</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <div style="margin-top: 16px; margin-bottom: 8px; display: flex; gap: 8px;">
+           <mat-form-field appearance="outline" style="flex: 1;">
+              <mat-label>Nueva Sede (Ej: PATALLANI)</mat-label>
+              <input matInput [formControl]="nuevaSedeCtrl" (keyup.enter)="agregarSede()" style="text-transform: uppercase;">
+           </mat-form-field>
+           <button mat-flat-button color="primary" [disabled]="!nuevaSedeCtrl.value || isLoadingSedes()" (click)="agregarSede()" style="height: 56px;">
+             <mat-icon>add</mat-icon> Agregar
+           </button>
+        </div>
+
+        @if(isLoadingSedes()) {
+          <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+        }
+
+        <table class="perfiles-table">
+          <tr><th>Sede Nombre</th><th style="width: 50px; text-align: center;">Acciones</th></tr>
+          @for(sede of sedes(); track sede.id) {
+            <tr>
+              <td><strong>{{sede['nombre']}}</strong></td>
+              <td style="text-align: center;">
+                <button mat-icon-button color="warn" (click)="eliminarSede(sede.id, sede['nombre'])"><mat-icon>delete</mat-icon></button>
+              </td>
+            </tr>
+          }
+          @if(!isLoadingSedes() && sedes().length === 0) {
+            <tr><td colspan="2" style="text-align: center; color: #888;">No hay sedes registradas.</td></tr>
+          }
+        </table>
+      </mat-card-content>
+    </mat-card>
+
     <!-- Card 5: Cierre de Día (Automatismo 23:55) -->
     <mat-card class="settings-card mat-elevation-z3 primary-card">
       <mat-card-header>
@@ -596,13 +651,61 @@ export class AdminAuthModal {
     .titles p { margin: 4px 0 0; color: #888; font-size: 0.87rem; }
   `]
 })
-export class ConfiguracionesComponent {
+export class ConfiguracionesComponent implements OnInit {
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
   private pbService = inject(PocketbaseService);
   private expedienteService = inject(ExpedienteService);
 
   processingCierre = signal(false);
+  
+  sedes = signal<any[]>([]);
+  nuevaSedeCtrl = new FormControl('');
+  isLoadingSedes = signal(false);
+
+  ngOnInit() {
+    this.cargarSedes();
+  }
+
+  async cargarSedes() {
+    this.isLoadingSedes.set(true);
+    try {
+      const records = await this.pbService.pb.collection('sedes').getFullList({ sort: 'nombre' });
+      this.sedes.set(records);
+    } catch (e: any) {
+      if (e.status !== 404 && e.status !== 403) this.snackBar.open('Error cargando sedes: ' + e.message, 'Cerrar');
+    } finally {
+      this.isLoadingSedes.set(false);
+    }
+  }
+
+  async agregarSede() {
+    const val = this.nuevaSedeCtrl.value?.trim().toUpperCase();
+    if (!val) return;
+    this.isLoadingSedes.set(true);
+    try {
+      await this.pbService.pb.collection('sedes').create({ nombre: val });
+      this.snackBar.open(`Sede ${val} agregada correctamente`, 'OK', { duration: 3000, panelClass: ['success-snackbar'] });
+      this.nuevaSedeCtrl.setValue('');
+      await this.cargarSedes();
+    } catch (e: any) {
+      this.snackBar.open('Error al agregar sede (Revisa si ya existe).', 'Cerrar', { duration: 4000 });
+      this.isLoadingSedes.set(false);
+    }
+  }
+
+  async eliminarSede(id: string, nombre: string) {
+    if (!confirm(`¿Eliminar la sede ${nombre}? Afectará los reportes si ya hay expedientes asignados a ella.`)) return;
+    this.isLoadingSedes.set(true);
+    try {
+      await this.pbService.pb.collection('sedes').delete(id);
+      this.snackBar.open(`Sede ${nombre} eliminada.`, 'OK', { duration: 3000 });
+      await this.cargarSedes();
+    } catch (e: any) {
+      this.snackBar.open('Error al eliminar sede: ' + e.message, 'Cerrar', { duration: 4000 });
+      this.isLoadingSedes.set(false);
+    }
+  }
 
   openInitModal() {
     this.dialog.open(AdminAuthModal, { width: '750px', maxWidth: '95vw', disableClose: true });

@@ -11,15 +11,6 @@ export const ESTADOS_SISTEMA = [
 
 export type EstadoExpediente = typeof ESTADOS_SISTEMA[number];
 
-export const SEDES_SISTEMA = [
-  'PUNO',
-  'JULIACA',
-  'ILAVE',
-  'HUANCANE',
-  'AZANGARO'
-] as const;
-
-export type SedeSistema = typeof SEDES_SISTEMA[number];
 
 export const PERFILES_SISTEMA = [
   'REGISTRADOR',

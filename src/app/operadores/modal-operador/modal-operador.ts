@@ -1,4 +1,4 @@
-import { Component, Inject, inject, signal } from '@angular/core';
+import { Component, Inject, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
 import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/material/dialog';
@@ -12,7 +12,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { PERFILES_SISTEMA, SEDES_SISTEMA } from '../../core/constants/app.constants';
+import { PocketbaseService } from '../../core/services/pocketbase.service';
+import { PERFILES_SISTEMA } from '../../core/constants/app.constants';
 
 export const passwordMatchValidator: ValidatorFn = (control: AbstractControl): ValidationErrors | null => {
   const password = control.get('password')?.value;
@@ -39,10 +40,11 @@ export const passwordMatchValidator: ValidatorFn = (control: AbstractControl): V
   templateUrl: './modal-operador.html',
   styleUrl: './modal-operador.scss'
 })
-export class ModalOperador {
+export class ModalOperador implements OnInit {
   private fb = inject(FormBuilder);
   private operadorService = inject(OperadorService);
   private authService = inject(AuthService);
+  private pbService = inject(PocketbaseService);
   private snackBar = inject(MatSnackBar);
   dialogRef = inject(MatDialogRef<ModalOperador>);
 
@@ -51,7 +53,17 @@ export class ModalOperador {
   hidePassword = signal<boolean>(true);
 
   perfiles = [...PERFILES_SISTEMA];
-  sedes = [...SEDES_SISTEMA];
+  sedes: string[] = [];
+
+  async ngOnInit() {
+    try {
+      const records = await this.pbService.pb.collection('sedes').getFullList({ sort: 'nombre' });
+      this.sedes = records.map(r => r['nombre']);
+    } catch (e) {
+      console.warn('Fallback a sedes nativas locales fallido la consulta', e);
+      this.sedes = ['PUNO', 'JULIACA'];
+    }
+  }
 
   form = this.fb.group({
     dni: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],
@@ -106,10 +118,10 @@ export class ModalOperador {
 
       const payload: any = {
         dni: val.dni!,
-        nombre: val.nombre!,
+        nombre: val.nombre!.toUpperCase(),
         email: payloadEmail.toLowerCase(),
         perfil: val.perfil!,
-        sede: (val.perfil === 'ENTREGADOR' && val.sede) ? val.sede.toUpperCase() : '',
+        sede: val.sede ? val.sede.toUpperCase() : 'PUNO',
         password: val.password || 'password123',
         passwordConfirm: val.passwordConfirm || 'password123',
         emailVisibility: true
@@ -120,8 +132,6 @@ export class ModalOperador {
         await this.operadorService.updateOperador(this.data!.id, payload);
         this.snackBar.open('Operador actualizado exitosamente', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
       } else {
-        // En creación, añadir el DNI como username por si PB v0.23 lo requiere para Auth
-        payload.username = val.dni; 
         console.log("[DEBUG] Enviando POST para nuevo operador:", payload);
         await this.operadorService.createOperador(payload);
         this.snackBar.open('Operador creado exitosamente', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
@@ -134,7 +144,7 @@ export class ModalOperador {
       console.error("Error detallado de PB:", e.response ? JSON.stringify(e.response, null, 2) : e);
       
       let errorMsg = 'Error al guardar el operador';
-      if (e.status === 400 && e.response?.data) {
+      if (e.status === 400 && e.response?.data && Object.keys(e.response.data).length > 0) {
         const data = e.response.data;
         // Revisar campos comunes de unicidad en Auth collections
         if (data.email) errorMsg = 'El correo electrónico ya existe o es inválido.';
@@ -145,12 +155,10 @@ export class ModalOperador {
            const firstKey = Object.keys(data)[0];
            if (firstKey) {
              errorMsg = `Error en campo ${firstKey}: ${data[firstKey].message || JSON.stringify(data[firstKey])}`;
-           } else if (e.message && e.message.includes('unique')) {
-             errorMsg = 'Error: Ya existe un registro con esos datos (DNI o Correo).';
-           } else {
-             errorMsg += ': ' + JSON.stringify(data);
            }
         }
+      } else if (e.status === 400 && e.message === 'Failed to create record.') {
+        errorMsg = 'Error de validación: Ya existe un registro con este DNI o Correo en el sistema, o los datos son inválidos.';
       } else if (e.message && (e.message.includes('unique') || e.message.includes('required'))) {
         errorMsg = 'Error de validación: El DNI o Correo ya existen.';
       } else {

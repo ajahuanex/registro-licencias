@@ -36,8 +36,11 @@
 
           <mat-form-field appearance="outline" class="w-full">
             <mat-label>Contraseña</mat-label>
-            <input matInput formControlName="password" type="password" placeholder="Su contraseña">
+            <input matInput [type]="hidePassword() ? 'password' : 'text'" formControlName="password" placeholder="Su contraseña">
             <mat-icon matPrefix>lock</mat-icon>
+            <button mat-icon-button matSuffix type="button" (click)="hidePassword.set(!hidePassword())" [attr.aria-label]="'Ocultar contraseña'" [attr.aria-pressed]="hidePassword()">
+              <mat-icon>{{hidePassword() ? 'visibility_off' : 'visibility'}}</mat-icon>
+            </button>
             @if (loginForm.controls.password.hasError('required') && loginForm.controls.password.touched) {
               <mat-error>La contraseña es obligatoria</mat-error>
             }

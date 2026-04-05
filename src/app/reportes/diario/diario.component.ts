@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal, ViewChild, computed, TemplateRef } from '@angular/core';
+import { Component, inject, OnInit, signal, ViewChild, computed, TemplateRef, OnDestroy } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { ExpedienteService } from '../../core/services/expediente.service';
 import { ReporteService } from '../../core/services/reporte.service';
@@ -6,6 +6,7 @@ import { RecordModel } from 'pocketbase';
 import { SelectionModel } from '@angular/cdk/collections';
 import { AuthService } from '../../core/services/auth.service';
 import { ESTADOS_SISTEMA, ESTADOS_POR_PERFIL } from '../../core/constants/app.constants';
+import { MainLayoutComponent } from '../../layout/main-layout/main-layout.component';
 
 import { MatTableModule } from '@angular/material/table';
 import { MatCardModule } from '@angular/material/card';
@@ -65,9 +66,13 @@ export interface ColumnDef {
   templateUrl: './diario.component.html',
   styleUrl: './diario.component.scss'
 })
-export class DiarioComponent implements OnInit {
+export class DiarioComponent implements OnInit, OnDestroy {
+  public authService = inject(AuthService);
+  private expService = inject(ExpedienteService);
+  public mainLayout = inject(MainLayoutComponent, { optional: true });
+
+  @ViewChild('mobileFilters') mobileFiltersTemplate!: TemplateRef<any>;
   private expedienteService = inject(ExpedienteService);
-  private authService = inject(AuthService);
   private datePipe = inject(DatePipe);
   private snackBar = inject(MatSnackBar);
   private dialog = inject(MatDialog);
@@ -78,10 +83,21 @@ export class DiarioComponent implements OnInit {
   currentDate = new Date();
   
   searchTerm = signal('');
+  perfilFilter = signal('TODOS');
+  
   filteredRecords = computed(() => {
+    let list = this.records();
     const term = this.searchTerm().toLowerCase();
-    if (!term) return this.records();
-    return this.records().filter(r => 
+    const perfil = this.perfilFilter();
+
+    // 1. Filter by Profile
+    if (perfil !== 'TODOS') {
+      list = list.filter(r => r.expand?.['operador']?.perfil === perfil);
+    }
+
+    // 2. Filter by Search Term
+    if (!term) return list;
+    return list.filter(r => 
       (r['dni_solicitante'] || '').includes(term) ||
       (r['apellidos_nombres']?.toLowerCase() || '').includes(term) ||
       (r['tramite']?.toLowerCase() || '').includes(term) ||
@@ -192,13 +208,35 @@ export class DiarioComponent implements OnInit {
   // ── Data ──────────────────────────────────────────────────────
   async ngOnInit() {
     const user = this.authService.currentUser();
-    if (user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil'])) {
+    const userRole = user?.['perfil'];
+
+    if (user && ['SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(userRole)) {
       this.allColumns.splice(1, 0, { key: 'operador_nombre', label: 'Operador', visible: true });
       this.allColumns.push({ key: 'acciones', label: 'Acciones', visible: true });
     }
 
+    // Default: Hide "Cambiar Estado" for Admin as it is redundant
+    if (userRole === 'ADMINISTRADOR') {
+      const col = this.allColumns.find(c => c.key === 'cambio_estado');
+      if (col) col.visible = false;
+    }
+
     this.loadColumnConfig();
     await this.loadData();
+    // Register mobile filters
+    if (this.mainLayout) {
+      setTimeout(() => {
+        if (this.mobileFiltersTemplate) {
+          this.mainLayout?.mobileFilterTemplate.set(this.mobileFiltersTemplate);
+        }
+      });
+    }
+  }
+
+  ngOnDestroy() {
+    if (this.mainLayout) {
+      this.mainLayout.mobileFilterTemplate.set(null);
+    }
   }
 
   async loadData() {
@@ -218,13 +256,52 @@ export class DiarioComponent implements OnInit {
     }
   }
 
+  canEdit(record: any): boolean {
+    if (!record) return false;
+    const userRole = this.authService.currentUser()?.['perfil'] || '';
+    
+    if (userRole === 'OTI') return true;
+    if (record['estado'] === 'ATENDIDO') return false;
+    if (userRole === 'ADMINISTRADOR') return true;
+    
+    if (userRole === 'REGISTRADOR') {
+      return ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'].includes(record['estado']);
+    }
+    if (userRole === 'IMPRESOR') {
+      return !['VERIFICADO', 'ENTREGADO', 'ATENDIDO', 'ANULADO'].includes(record['estado']);
+    }
+    if (userRole === 'SUPERVISOR') {
+      return !['ENTREGADO', 'ATENDIDO'].includes(record['estado']);
+    }
+    if (userRole === 'ENTREGADOR') {
+      return ['VERIFICADO', 'ENTREGADO', 'OBSERVADO'].includes(record['estado']);
+    }
+    return false;
+  }
+
+  canDelete(record: any): boolean {
+    if (!record) return false;
+    const userRole = this.authService.currentUser()?.['perfil'] || '';
+    if (userRole === 'OTI') return true;
+    if (['ATENDIDO', 'ENTREGADO'].includes(record['estado'])) return false;
+    if (userRole === 'ADMINISTRADOR') return true;
+    if (userRole === 'REGISTRADOR') {
+      return ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'].includes(record['estado']);
+    }
+    return false;
+  }
+
   editRecord(record: RecordModel) {
+    const isReadOnly = !this.canEdit(record);
     const ref = this.dialog.open(ExpedienteFormModal, {
       width: '90vw',
       maxWidth: '920px',
       disableClose: true,
       data: record
     });
+    if (isReadOnly) {
+      ref.componentInstance.isReadOnly.set(true);
+    }
     ref.afterClosed().subscribe(saved => { 
       if (saved) this.loadData(); 
     });

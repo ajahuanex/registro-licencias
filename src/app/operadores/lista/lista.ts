@@ -46,8 +46,18 @@ export class Lista implements OnInit {
   searchTerm = signal<string>('');
   filteredOperadores = computed(() => {
     const term = this.searchTerm().toLowerCase();
-    if (!term) return this.operadores();
-    return this.operadores().filter(op => 
+    const currentUser = this.authService.currentUser();
+    const isOnlyAdmin = currentUser?.['perfil'] === 'ADMINISTRADOR';
+
+    let list = this.operadores();
+    
+    // Hide OTI profile from Administrators
+    if (isOnlyAdmin) {
+      list = list.filter(op => op['perfil'] !== 'OTI');
+    }
+
+    if (!term) return list;
+    return list.filter(op => 
        (op['nombre']?.toLowerCase() || '').includes(term) || 
        (op['dni'] || '').includes(term) || 
        (op['email']?.toLowerCase() || '').includes(term) ||
@@ -90,10 +100,46 @@ export class Lista implements OnInit {
     await this.loadData();
   }
 
-  async loadData() {
+  async loadData(forceRefresh = false) {
     this.isLoading.set(true);
+
+    // Si el usuario presionó específicamente el icono "Actualizar", forzamos
+    // una revalidación severa de la sesión para purgar cachés fantasmas o tokens muertos.
+    if (forceRefresh) {
+      try {
+        await (this.authService as any).pbService.pb.collection('operadores').authRefresh();
+        this.snackBar.open('Caché sincronizado con la nube', 'Cerrar', { duration: 2000 });
+      } catch (e) {
+        console.warn('El token almacenado estaba corrupto o el usuario no existe. Cerrando sesión...');
+        this.authService.logout();
+        return;
+      }
+    }
+
     try {
       const data = await this.operadorService.getOperadores();
+      console.log(`[DEBUG LISTA] getOperadores devolvió ${data.length} elementos:`, data);
+      
+      // AUTO-HEALING INTELIGENTE:
+      // Si la lista de operadores viene vacía (lo cual es imposible en la práctica ya que el 
+      // propio administrador validado debería estar listado) y no fue un refresh explícito,
+      // la aplicación deduce que hay una anomalía y verifica silenciosamente la sesión real.
+      if (data.length === 0 && !forceRefresh && this.isOti()) {
+         console.warn("[DEBUG LISTA] Anomalía: 0 operadores retornados. Iniciando auto-diagnóstico silencioso de la sesión...");
+         try {
+           await (this.authService as any).pbService.pb.collection('operadores').authRefresh();
+           // Si authRefresh funciona, el token es válido y la DB realmente está vacía (raro pero posible).
+           // Procedemos repitiendo el GET con el token fresco.
+           const refreshedData = await this.operadorService.getOperadores();
+           this.operadores.set(refreshedData);
+           return; // Salimos temprano
+         } catch (e) {
+           console.error('[AUTH] Diagnóstico falló: El usuario en caché ya no existe en el backend. Auto-reparando sesión.');
+           this.authService.logout();
+           return;
+         }
+      }
+
       this.operadores.set(data);
     } catch (e: any) {
       console.error(e);

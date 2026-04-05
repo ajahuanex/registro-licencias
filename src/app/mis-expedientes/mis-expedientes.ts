@@ -1,4 +1,5 @@
-import { Component, inject, OnInit, signal, ViewChild } from '@angular/core';
+import { Component, inject, OnInit, signal, ViewChild, effect, TemplateRef, AfterViewInit, OnDestroy } from '@angular/core';
+import { MainLayoutComponent } from '../layout/main-layout/main-layout.component';
 import { SelectionModel } from '@angular/cdk/collections';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators, FormsModule } from '@angular/forms';
@@ -33,6 +34,20 @@ import autoTable from 'jspdf-autotable';
 
 // ===== MODAL COMPONENT =====
 import { Component as CompDeco, Inject } from '@angular/core';
+
+export const TRAMITES_MTC = ['Obtención', 'Revalidación', 'Duplicado', 'Recategorización'];
+export const CATEGORIAS_MTC = [
+  { value: 'A-I',    label: 'A-I   — Vehículos particulares' },
+  { value: 'A-IIa',  label: 'A-IIa — Taxis / transporte público menor' },
+  { value: 'A-IIb',  label: 'A-IIb — Microbús / Minibús' },
+  { value: 'A-IIIa', label: 'A-IIIa— Ómnibus (>6 ton)' },
+  { value: 'A-IIIb', label: 'A-IIIb — Camión / Grúa / Remolque' },
+  { value: 'A-IIIc', label: 'A-IIIc— Combinada A-I + A-II + A-III' },
+  { value: 'B-I',    label: 'B-I   — Triciclos / Mototaxis' },
+  { value: 'B-IIa',  label: 'B-IIa — Bicimotos / Motocicletas' },
+  { value: 'B-IIb',  label: 'B-IIb — Motocicletas con Sidecar' },
+  { value: 'B-IIc',  label: 'B-IIc — Mototaxis / Trimóviles Pasajeros' }
+];
 
 @CompDeco({
   selector: 'app-expediente-form-modal',
@@ -87,7 +102,7 @@ import { Component as CompDeco, Inject } from '@angular/core';
       </mat-select><mat-icon matPrefix>pending_actions</mat-icon>
     </mat-form-field>
     <div class="registration-checks two-col">
-      <mat-checkbox formControlName="reviso_sanciones">Sistema Nac. Sanciones (MTC)</mat-checkbox>
+      <mat-checkbox formControlName="reviso_sanciones">Confirmo que revisé este DNI en el Sistema Nac. de Sanciones (MTC) sin papeletas pendientes</mat-checkbox>
     </div>
     <mat-form-field appearance="outline" class="two-col">
       <mat-label>Observaciones / Justificación</mat-label>
@@ -134,156 +149,100 @@ import { Component as CompDeco, Inject } from '@angular/core';
     mat-checkbox { color: #1a4f8f; font-weight: 500; }
   `]
 })
-export class ExpedienteFormModal {
+export class ExpedienteFormModal implements OnInit {
   // Trámites según normativa MTC
-  tramites = ['Obtención', 'Revalidación', 'Duplicado', 'Recategorización'];
+  tramites = TRAMITES_MTC;
+  categoriasDisponibles = CATEGORIAS_MTC;
 
-  // Categorías completas MTC
-  private static readonly TODAS_CATEGORIAS = [
-    // Clase A — ordinarias
-    { value: 'A-I',    label: 'A-I   — Vehículos particulares' },
-    { value: 'A-IIa',  label: 'A-IIa — Taxis / transporte público menor' },
-    { value: 'A-IIb',  label: 'A-IIb — Microbús / Minibús' },
-    { value: 'A-IIIa', label: 'A-IIIa— Ómnibus (>6 ton)' },
-    { value: 'A-IIIb', label: 'A-IIIb— Camión / Grúa / Remolque' },
-    { value: 'A-IIIc', label: 'A-IIIc— Combinada A-I + A-II + A-III' },
-    // Clase A — Especial (solo Obtención/Revalidación)
-    { value: 'A-IV',   label: 'A-IV  — Especial Mat. Peligrosos' },
-    // Clase B — menores
-    { value: 'B-IIa',  label: 'B-IIa — Bicimotos de carga/pasajeros' },
-    { value: 'B-IIb',  label: 'B-IIb — Motocicletas' },
-    { value: 'B-IIc',  label: 'B-IIc — Mototaxi / Trimoto' },
-  ];
-
-  lugares = ['Puno', 'Juliaca'];
+  lugares: string[] = [];
   saving = signal(false);
   isReadOnly = signal(false);
   isSearchingDni = signal(false);
 
-  // Diccionarios centralizados en app.constants.ts
-
+  data = inject(MAT_DIALOG_DATA);
+  private fb = inject(FormBuilder);
   private authServiceModal = inject(AuthService);
   private expedienteService = inject(ExpedienteService);
   private pbService = inject(PocketbaseService);
   private snackBar = inject(MatSnackBar);
   dialogRef = inject(MatDialogRef<ExpedienteFormModal>);
 
+  form = this.fb.group({
+    dni_solicitante: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],
+    apellidos_nombres: ['', Validators.required],
+    celular: [''],
+    tramite: ['', Validators.required],
+    categoria: ['', Validators.required],
+    lugar_entrega: ['', Validators.required],
+    estado: ['EN PROCESO', Validators.required],
+    reviso_sanciones: [false],
+    observaciones: ['', [Validators.minLength(5)]]
+  });
+
+  async ngOnInit() {
+    // Si hay data (edición), cargar valores
+    if (this.data) {
+      this.form.patchValue(this.data);
+      if (this.data.reviso_sanciones) {
+          this.form.get('observaciones')?.setValidators([Validators.minLength(5)]);
+      } else {
+          this.form.get('observaciones')?.setValidators([Validators.required, Validators.minLength(5)]);
+      }
+      this.form.get('observaciones')?.updateValueAndValidity();
+    }
+
+    try {
+      const records = await this.pbService.pb.collection('sedes').getFullList({ sort: 'nombre' });
+      this.lugares = records
+           .filter(r => r['es_centro_entrega'] !== false)
+           .map(r => r['nombre']);
+      
+      if (!this.data) {
+        this.form.get('lugar_entrega')?.setValue(this.lugares[0] || 'PUNO');
+      }
+    } catch (e) {
+      this.lugares = ['PUNO', 'JULIACA'];
+      if (!this.form.get('lugar_entrega')?.value) this.form.get('lugar_entrega')?.setValue('PUNO');
+    }
+  }
+
   get estados(): string[] {
     const perfil = this.authServiceModal.currentUser()?.['perfil'] ?? '';
     return ESTADOS_POR_PERFIL[perfil] ?? [...ESTADOS_SISTEMA];
   }
 
-  /** Categorías disponibles según el trámite seleccionado */
-  get categoriasDisponibles() {
-    const tramite = this.form.get('tramite')?.value ?? '';
-    // DUPLICADO y RECATEGORIZACIÓN→ todas las categorías ordinarias (no A-IV)
-    // OBTENCIÓN y REVALIDACIÓN → todas incluidas A-IV
-    if (tramite === 'Duplicado' || tramite === 'Recategorización') {
-      return ExpedienteFormModal.TODAS_CATEGORIAS.filter(c => c.value !== 'A-IV');
-    }
-    return ExpedienteFormModal.TODAS_CATEGORIAS;
-  }
-
-  form = inject(FormBuilder).group({
-    dni_solicitante: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],
-    apellidos_nombres: ['', [Validators.required, Validators.minLength(3)]],
-    celular: [''],
-    tramite: ['Obtención', Validators.required],
-    estado: ['EN PROCESO', Validators.required],
-    categoria: ['A-I', Validators.required],
-    lugar_entrega: ['Puno', Validators.required],
-    reviso_sanciones: [false],
-    observaciones: ['']
-  });
-
-  /** When tramite changes, reset categoria to first valid option */
   onTramiteChange() {
-    const disponibles = this.categoriasDisponibles;
-    const current = this.form.get('categoria')?.value;
-    if (!disponibles.find(c => c.value === current)) {
-      this.form.get('categoria')?.setValue(disponibles[0]?.value ?? 'A-I');
-    }
-  }
-
-  constructor(@Inject(MAT_DIALOG_DATA) public data: RecordModel | null) {
-    if (data?.id) {
-      this.form.patchValue({
-        dni_solicitante: data['dni_solicitante'],
-        apellidos_nombres: data['apellidos_nombres'],
-        celular: data['celular'] || '',
-        tramite: data['tramite'],
-        estado: data['estado'],
-        categoria: data['categoria'],
-        lugar_entrega: data['lugar_entrega'],
-        reviso_sanciones: data['reviso_sanciones'] || false,
-        observaciones: data['observaciones'] || ''
-      });
-
-      const user = this.authServiceModal.currentUser();
-      const isPrivileged = user && ['IMPRESOR', 'SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
-      if (!isPrivileged && data['estado'] !== 'EN PROCESO') {
-        this.isReadOnly.set(true);
-        this.form.disable();
-      }
-    }
-
-    // Logic for Observations requirement
-    this.form.valueChanges.subscribe(() => {
-      const estado = this.form.get('estado')?.value;
-      const revisoSanciones = this.form.get('reviso_sanciones')?.value;
-      const obsControl = this.form.get('observaciones');
-
-      // Obligatorio si el estado es OBSERVADO O si NO se revisó sanciones
-      if (estado === 'OBSERVADO' || !revisoSanciones) {
-        obsControl?.setValidators([Validators.required, Validators.minLength(5)]);
-      } else {
-        obsControl?.clearValidators();
-      }
-      obsControl?.updateValueAndValidity({ emitEvent: false });
-    });
+    // Lógica opcional al cambiar trámite
   }
 
   async searchDni() {
     const dni = this.form.get('dni_solicitante')?.value;
-    if (!dni || dni.length !== 8) {
-      this.snackBar.open('Ingrese un DNI válido de 8 dígitos', 'Cerrar', { duration: 3000 });
-      return;
-    }
+    if (!dni || dni.length !== 8) return;
 
-    // TODO: Conectar a API real de RENIEC cuando esté disponible
-    this.snackBar.open('La búsqueda automática de DNI estará disponible próximamente.', 'Entendido', { duration: 4000, panelClass: ['info-snackbar'] });
+    this.isSearchingDni.set(true);
+    try {
+      // Simulación o llamada a API de búsqueda
+      this.snackBar.open('Búsqueda de DNI no disponible en este entorno', 'OK', { duration: 2000 });
+    } finally {
+      this.isSearchingDni.set(false);
+    }
   }
 
   async onSubmit() {
-    if (this.form.invalid) { this.form.markAllAsTouched(); return; }
+    if (this.form.invalid) return;
     this.saving.set(true);
     try {
-      const val = this.form.value;
-      const payload: any = {
-        dni_solicitante: val.dni_solicitante!.trim(),
-        apellidos_nombres: val.apellidos_nombres!.trim().toUpperCase(),
-        celular: val.celular?.trim() || '',
-        tramite: val.tramite!,
-        estado: val.estado!,
-        categoria: val.categoria!,
-        lugar_entrega: val.lugar_entrega!,
-        reviso_sanciones: !!val.reviso_sanciones,
-        observaciones: val.observaciones || ''
-      };
-
+      const val = this.form.value as any;
       if (this.data?.id) {
-        await this.expedienteService.updateExpediente(this.data.id, payload, 'EDICION_FORMULARIO');
-        this.snackBar.open('Expediente actualizado', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
+        await this.expedienteService.updateExpediente(this.data.id, val, 'MODIFICACION_REGISTRADOR');
       } else {
-        const user = this.authServiceModal.currentUser(); // fix-id-access-submit
-        payload.operador = user!.id;
-        payload.fecha_registro = new Date().toISOString();
-        await this.expedienteService.registerExpediente(payload);
-        this.snackBar.open('Expediente registrado exitosamente', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
+        const user = this.authServiceModal.currentUser();
+        val.operador = user?.id;
+        await this.expedienteService.registerExpediente(val);
       }
       this.dialogRef.close(true);
     } catch (e: any) {
-      this.snackBar.open('Error: ' + e.message, 'Cerrar', { duration: 4000, panelClass: ['error-snackbar'] });
+      this.snackBar.open('Error: ' + e.message, 'Cerrar', { duration: 4000 });
     } finally {
       this.saving.set(false);
     }
@@ -298,7 +257,8 @@ export class ExpedienteFormModal {
     CommonModule, FormsModule, MatTableModule, MatPaginatorModule, MatSortModule,
     MatCardModule, MatButtonModule, MatIconModule, MatDialogModule,
     MatSnackBarModule, MatTooltipModule, MatDatepickerModule, MatNativeDateModule,
-    MatFormFieldModule, MatInputModule, MatCheckboxModule, MatMenuModule, MatTabsModule
+    MatFormFieldModule, MatInputModule, MatCheckboxModule, MatMenuModule, MatTabsModule,
+    MatSelectModule, ReactiveFormsModule
   ],
   providers: [
     { provide: MAT_DATE_LOCALE, useValue: 'es-PE' }
@@ -313,12 +273,37 @@ export class MisExpedientes implements OnInit {
   private dialog = inject(MatDialog);
   private snackBar = inject(MatSnackBar);
   private titleService = inject(Title);
+  public mainLayout = inject(MainLayoutComponent, { optional: true });
+
+  @ViewChild('mobileFilters') mobileFiltersTemplate!: TemplateRef<any>;
 
   dataSource = new MatTableDataSource<RecordModel>([]);
   selection = new SelectionModel<RecordModel>(true, []);
   isLoading = signal(true);
+  searchTerm = signal('');
+
+  constructor() {
+    effect(() => {
+      const val = this.searchTerm();
+      this.dataSource.filter = val.trim().toLowerCase();
+      if (this.dataSource.paginator) {
+        this.dataSource.paginator.firstPage();
+      }
+    });
+  }
+  
   currentDate = new Date();
-  activeTabIndex = 0;
+  
+  // New Filter Signals
+  selectedTramite = signal('TODAS');
+  selectedCategoria = signal('TODAS');
+  tramiteOptions = ['TODAS', ...TRAMITES_MTC];
+  categoriaOptions = [{ value: 'TODAS', label: 'TODAS LAS CATEGORÍAS' }, ...CATEGORIAS_MTC];
+  
+  // Advanced Filter
+  showAdvancedFilter = false;
+  startDate: Date | null = null;
+  endDate: Date | null = null;
   
   displayedColumns = ['select', 'num', 'dni_solicitante', 'apellidos_nombres', 'tramite', 'categoria', 'estado', 'observaciones', 'lugar_entrega', 'acciones'];
   columnOptions = [
@@ -332,7 +317,7 @@ export class MisExpedientes implements OnInit {
   ];
 
   atencionesDataSource = new MatTableDataSource<any>([]);
-  atencionesColumns = ['num', 'fecha', 'dni', 'nombre', 'tramite', 'estado', 'ver'];
+  atencionesColumns = ['num', 'fecha', 'dni', 'nombre', 'tramite', 'lugar', 'estado_actual', 'revertir'];
 
   @ViewChild(MatPaginator) paginator!: MatPaginator;
   @ViewChild(MatSort) sort!: MatSort;
@@ -343,7 +328,24 @@ export class MisExpedientes implements OnInit {
   async ngOnInit() {
     this.titleService.setTitle('Mis Expedientes | DRTC Puno');
     await this.loadData();
-    await this.loadAtenciones();
+    if (['IMPRESOR', 'SUPERVISOR', 'ENTREGADOR', 'ADMINISTRADOR', 'OTI'].includes(this.userPerfil)) {
+      await this.loadAtenciones();
+    }
+    
+    // Register mobile filters
+    if (this.mainLayout) {
+      setTimeout(() => {
+        if (this.mobileFiltersTemplate) {
+          this.mainLayout?.mobileFilterTemplate.set(this.mobileFiltersTemplate);
+        }
+      });
+    }
+  }
+
+  ngOnDestroy() {
+    if (this.mainLayout) {
+      this.mainLayout.mobileFilterTemplate.set(null);
+    }
   }
 
   async loadAtenciones() {
@@ -351,7 +353,25 @@ export class MisExpedientes implements OnInit {
       const user = this.authService.currentUser();
       if (!user) return;
       const data = await this.expedienteService.getMisAtenciones(user.id);
-      this.atencionesDataSource.data = data;
+      
+      const dStart = (this.showAdvancedFilter && this.startDate) ? this.startDate : this.currentDate;
+      const dEnd = (this.showAdvancedFilter && this.endDate) ? this.endDate : this.currentDate;
+      
+      const startOfDay = new Date(dStart);
+      startOfDay.setHours(0,0,0,0);
+      const endOfDay = new Date(dEnd);
+      endOfDay.setHours(23,59,59,999);
+      
+      // Filter the data based on the current date view for daily report
+      const dailyData = data.filter((item: any) => {
+        const itemDate = new Date(item.fecha);
+        return itemDate >= startOfDay && itemDate <= endOfDay;
+      });
+      
+      console.log("[DEBUG ATENCIONES] Fetched logs for date range:", startOfDay, "to", endOfDay);
+      console.log("[DEBUG ATENCIONES] raw data:", data.length, "- daily filtered:", dailyData.length);
+
+      this.atencionesDataSource.data = dailyData;
       setTimeout(() => {
         this.atencionesDataSource.paginator = this.atencionesPaginator;
         this.atencionesDataSource.sort = this.atencionesSort;
@@ -361,20 +381,90 @@ export class MisExpedientes implements OnInit {
     }
   }
 
+  toggleAdvancedFilter() {
+    this.showAdvancedFilter = !this.showAdvancedFilter;
+    if (!this.showAdvancedFilter) {
+      this.currentDate = new Date();
+      this.loadData();
+      if (['IMPRESOR', 'SUPERVISOR', 'ENTREGADOR', 'ADMINISTRADOR', 'OTI'].includes(this.userPerfil)) this.loadAtenciones();
+    } else {
+      this.startDate = this.currentDate;
+      this.endDate = this.currentDate;
+    }
+  }
+
+  applyRangeFilter() {
+    if (this.startDate && this.endDate) {
+      this.loadData();
+      if (['IMPRESOR', 'SUPERVISOR', 'ENTREGADOR', 'ADMINISTRADOR', 'OTI'].includes(this.userPerfil)) this.loadAtenciones();
+    }
+  }
+
   async loadData() {
     this.isLoading.set(true);
     try {
       const user = this.authService.currentUser(); // fix-id-load
       if (!user) return;
       
-      const year = this.currentDate.getFullYear();
-      const month = String(this.currentDate.getMonth() + 1).padStart(2, '0');
-      const day = String(this.currentDate.getDate()).padStart(2, '0');
-      const dateString = `${year}-${month}-${day}`;
+      const originStart = (this.showAdvancedFilter && this.startDate) ? new Date(this.startDate) : new Date();
+      originStart.setHours(0, 0, 0, 0); // Local start of day
+      const startStr = originStart.toISOString().replace('T', ' ');
+
+      const originEnd = (this.showAdvancedFilter && this.endDate) ? new Date(this.endDate) : new Date();
+      originEnd.setHours(23, 59, 59, 999); // Local end of day
+      const endStr = originEnd.toISOString().replace('T', ' ');
+
+      let filterStr: string;
+      let records: any[];
+
+      // El SUPERVISOR ve TODOS los IMPRESOS pendientes sin restricción de fecha
+      if (user['perfil'] === 'SUPERVISOR') {
+        filterStr = `estado = "IMPRESO"`;
+        records = await this.pbService.pb.collection('expedientes').getFullList({
+          filter: filterStr,
+          expand: 'operador',
+          sort: '-fecha_registro'
+        });
+      } else if (user['perfil'] === 'ENTREGADOR') {
+        // El ENTREGADOR ve TODOS los VERIFICADOS sin restricción de fecha, pero SOLO de su sede
+        const userSede = user['sede'] ? user['sede'].toUpperCase() : '';
+        filterStr = `estado = "VERIFICADO" && lugar_entrega = "${userSede}"`;
+        records = await this.pbService.pb.collection('expedientes').getFullList({
+          filter: filterStr,
+          expand: 'operador',
+          sort: '-fecha_registro'
+        });
+      } else {
+        filterStr = `fecha_registro >= "${startStr}" && fecha_registro <= "${endStr}"`;
+        
+        const isPrivileged = ['IMPRESOR', 'SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
+        if (!isPrivileged) {
+            filterStr += ` && operador = '${user.id}'`;
+        }
+
+        // Apply dynamic filters
+        if (this.selectedTramite() !== 'TODAS') {
+          filterStr += ` && tramite = "${this.selectedTramite()}"`;
+        }
+        if (this.selectedCategoria() !== 'TODAS') {
+          filterStr += ` && categoria = "${this.selectedCategoria()}"`;
+        }
+        
+        records = await this.pbService.pb.collection('expedientes').getFullList({
+            filter: filterStr,
+            expand: 'operador',
+            sort: '-fecha_registro'
+        });
+      }
       
-      const isPrivileged = ['IMPRESOR', 'SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
-      const records = await this.expedienteService.getDailyConsolidated(dateString, isPrivileged ? undefined : user.id);
-      this.dataSource.data = records;
+      let tableData = records;
+      
+      // Ocultar de la tabla principal los expedientes que ya fueron IMPRESOS si eres SOLO IMPRESOR
+      if (user['perfil'] === 'IMPRESOR') {
+        tableData = records.filter(r => r['estado'] !== 'IMPRESO');
+      }
+      
+      this.dataSource.data = tableData;
       this.selection.clear();
       this.updateVisibleColumns();
       setTimeout(() => {
@@ -397,25 +487,94 @@ export class MisExpedientes implements OnInit {
     }
   }
 
+  canEdit(record: any): boolean {
+    if (!record) return false;
+    const userRole = this.userPerfil;
+    
+    // OTI has full access
+    if (userRole === 'OTI') return true;
+    
+    // Block everyone else from ATENDIDO
+    if (record['estado'] === 'ATENDIDO') return false;
+    
+    // Admin has access to all non-ATENDIDO
+    if (userRole === 'ADMINISTRADOR') return true;
+    
+    if (userRole === 'REGISTRADOR') {
+      const allowed = ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'];
+      return allowed.includes(record['estado']);
+    }
+    
+    if (userRole === 'IMPRESOR') {
+      const blocked = ['VERIFICADO', 'ENTREGADO', 'ATENDIDO', 'ANULADO'];
+      return !blocked.includes(record['estado']);
+    }
+
+    if (userRole === 'SUPERVISOR') {
+      const blocked = ['ENTREGADO', 'ATENDIDO'];
+      return !blocked.includes(record['estado']);
+    }
+
+    if (userRole === 'ENTREGADOR') {
+      const allowed = ['VERIFICADO', 'ENTREGADO', 'OBSERVADO'];
+      return allowed.includes(record['estado']);
+    }
+
+    return false;
+  }
+
+  canDelete(record: any): boolean {
+    if (!record) return false;
+    const userRole = this.userPerfil;
+
+    // OTI can delete anything
+    if (userRole === 'OTI') return true;
+
+    // Block everyone else from ATENDIDO/ENTREGADO (Deletion is dangerous)
+    if (['ATENDIDO', 'ENTREGADO'].includes(record['estado'])) return false;
+
+    // Admin can delete if not ATENDIDO/ENTREGADO
+    if (userRole === 'ADMINISTRADOR') return true;
+
+    // Registrador can only delete early stages
+    if (userRole === 'REGISTRADOR') {
+      const allowed = ['EN PROCESO', 'OBSERVADO', 'RECHAZADO'];
+      return allowed.includes(record['estado']);
+    }
+
+    return false;
+  }
+
   openModal(record?: RecordModel) {
+    const isReadOnly = record ? !this.canEdit(record) : false;
+    
     const ref = this.dialog.open(ExpedienteFormModal, {
       width: '90vw',
       maxWidth: '920px',
       disableClose: true,
       data: record ?? null
     });
-    ref.afterClosed().subscribe(saved => { if (saved) this.loadData(); });
+    
+    if (isReadOnly) {
+      ref.componentInstance.isReadOnly.set(true);
+    }
+    ref.afterClosed().subscribe(saved => { 
+      if (saved) {
+        this.loadData(); 
+        if (this.userPerfil === 'IMPRESOR' || this.userPerfil === 'ADMINISTRADOR' || this.userPerfil === 'OTI') this.loadAtenciones();
+      }
+    });
   }
 
-  async deleteExpediente(id: string) {
-    if (this.userPerfil === 'IMPRESOR') {
-      this.snackBar.open('El Impresor no tiene permisos para eliminar registros.', 'Entendido', { duration: 3000 });
+  async deleteExpediente(record: any) {
+    if (!this.canDelete(record)) {
+      this.snackBar.open('No tiene permisos para eliminar este registro en su estado actual.', 'Entendido', { duration: 3000 });
       return;
     }
     if (!confirm('¿Eliminar este expediente? Esta acción no se puede deshacer.')) return;
     this.isLoading.set(true);
     try {
-      await this.pbService.pb.collection('expedientes').delete(id);
+      await this.pbService.pb.collection('expedientes').delete(record.id);
       this.snackBar.open('Expediente eliminado', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
       await this.loadData();
     } catch (e: any) {
@@ -444,8 +603,87 @@ export class MisExpedientes implements OnInit {
       await this.expedienteService.updateExpediente(record.id, { estado: 'IMPRESO' }, 'MARCADO_RAPIDO_IMPRESO');
       this.snackBar.open('Expediente marcado como IMPRESO', 'Cerrar', { duration: 2000 });
       await this.loadData();
+      if (this.userPerfil === 'IMPRESOR' || this.userPerfil === 'OTI') await this.loadAtenciones();
     } catch (e: any) {
       this.snackBar.open('Error: ' + e.message, 'Cerrar', { duration: 4000 });
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  async marcarComoVerificado(record: RecordModel) {
+    try {
+      this.isLoading.set(true);
+      await this.expedienteService.updateExpediente(record.id, { estado: 'VERIFICADO' }, 'MARCADO_RAPIDO_VERIFICADO');
+      this.snackBar.open('Expediente marcado como VERIFICADO', 'Cerrar', { duration: 2000 });
+      await this.loadData();
+      if (['SUPERVISOR', 'OTI', 'ADMINISTRADOR'].includes(this.userPerfil)) await this.loadAtenciones();
+    } catch (e: any) {
+      this.snackBar.open('Error: ' + e.message, 'Cerrar', { duration: 4000 });
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  async marcarComoEntregado(record: RecordModel) {
+    try {
+      this.isLoading.set(true);
+      await this.expedienteService.updateExpediente(record.id, { estado: 'ENTREGADO' }, 'MARCADO_RAPIDO_ENTREGA');
+      this.snackBar.open('Expediente marcado como ENTREGADO', 'Cerrar', { duration: 2000 });
+      await this.loadData();
+      if (['ENTREGADOR', 'OTI', 'ADMINISTRADOR'].includes(this.userPerfil)) await this.loadAtenciones();
+    } catch (e: any) {
+      this.snackBar.open('Error: ' + e.message, 'Cerrar', { duration: 4000 });
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  async revertirAccion(element: any) {
+    const isImpreso = element.expand?.expediente_id?.estado === 'IMPRESO';
+    const isVerificado = element.expand?.expediente_id?.estado === 'VERIFICADO';
+    const isEntregado = element.expand?.expediente_id?.estado === 'ENTREGADO';
+    const isAtendido = element.expand?.expediente_id?.estado === 'ATENDIDO';
+    
+    if (isAtendido && this.userPerfil !== 'OTI' && this.userPerfil !== 'ADMINISTRADOR') {
+      this.snackBar.open('Solo el personal de OTI o Administrador puede revertir un expediente ATENDIDO.', 'Cerrar', { duration: 4000 });
+      return;
+    }
+
+    if (isImpreso) {
+        if (!confirm('¿Desea revertir el estado de este expediente devolviéndolo a "EN PROCESO"?')) return;
+    } else if (isVerificado) {
+        if (!confirm('¿Desea revertir la verificación devolviéndolo a "IMPRESO"?')) return;
+    } else if (isEntregado) {
+        if (!confirm('¿Desea revertir la entrega devolviéndolo a "VERIFICADO"?')) return;
+    } else if (isAtendido) {
+        if (!confirm('¿ESTÁ SEGURO DE REVERTIR UN EXPEDIENTE FINALIZADO (ATENDIDO)? Se devolverá a estado ENTREGADO.')) return;
+    } else {
+        return;
+    }
+
+    const expId = element.expand?.expediente_id?.id;
+    if (!expId) return;
+
+    try {
+      this.isLoading.set(true);
+      if (isImpreso) {
+         await this.expedienteService.updateExpediente(expId, { estado: 'EN PROCESO' }, 'REVERTIR_IMPRESION');
+         this.snackBar.open('Impresión revertida a EN PROCESO', 'Cerrar', { duration: 2000 });
+      } else if (isVerificado) {
+         await this.expedienteService.updateExpediente(expId, { estado: 'IMPRESO' }, 'REVERTIR_VERIFICACION');
+         this.snackBar.open('Verificación revertida a IMPRESO', 'Cerrar', { duration: 2000 });
+      } else if (isEntregado) {
+         await this.expedienteService.updateExpediente(expId, { estado: 'VERIFICADO' }, 'REVERTIR_ENTREGA');
+         this.snackBar.open('Entrega revertida a VERIFICADO', 'Cerrar', { duration: 2000 });
+      } else if (isAtendido) {
+        await this.expedienteService.updateExpediente(expId, { estado: 'ENTREGADO' }, 'REVERTIR_ATENCION_OTI');
+        this.snackBar.open('Atención revertida por OTI a ENTREGADO', 'Cerrar', { duration: 2000 });
+      }
+      await this.loadData();
+      if (['IMPRESOR', 'SUPERVISOR', 'ENTREGADOR', 'ADMINISTRADOR', 'OTI'].includes(this.userPerfil)) await this.loadAtenciones();
+    } catch (e: any) {
+      this.snackBar.open('Error al revertir: ' + e.message, 'Cerrar', { duration: 4000 });
     } finally {
       this.isLoading.set(false);
     }
@@ -477,6 +715,55 @@ export class MisExpedientes implements OnInit {
     console.log('[BULK] Finalizado. Éxitos:', successCount);
     this.snackBar.open(`${successCount} expedientes actualizados con éxito.`, 'Cerrar', { duration: 3000 });
     await this.loadData();
+    if (this.userPerfil === 'IMPRESOR' || this.userPerfil === 'OTI') await this.loadAtenciones();
+  }
+
+  async marcarComoVerificadoMasivo() {
+    console.log('[BULK] VERIFICADO DETECTADO');
+    const selected = this.selection.selected;
+    if (selected.length === 0) return;
+    
+    this.snackBar.open(`Verificando ${selected.length} expedientes...`, 'Ok', { duration: 2000 });
+
+    this.isLoading.set(true);
+    let successCount = 0;
+    for (const item of selected) {
+      if (item['estado'] === 'VERIFICADO') continue;
+      try {
+        await this.expedienteService.updateExpediente(item.id, { estado: 'VERIFICADO' }, 'PROCESO_MASIVO_VERIFICADOR');
+        successCount++;
+      } catch (e) {
+        console.error('[BULK] Error al verificar masivo:', item.id, e);
+      }
+    }
+    this.snackBar.open(`${successCount} expedientes verificados exitosamente.`, 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
+    await this.loadData();
+    if (['SUPERVISOR', 'OTI'].includes(this.userPerfil)) await this.loadAtenciones();
+    this.isLoading.set(false);
+  }
+
+  async marcarComoEntregadoMasivo() {
+    console.log('[BULK] ENTREGA DETECTADA');
+    const selected = this.selection.selected;
+    if (selected.length === 0) return;
+    
+    this.snackBar.open(`Entregando ${selected.length} expedientes...`, 'Ok', { duration: 2000 });
+
+    this.isLoading.set(true);
+    let successCount = 0;
+    for (const item of selected) {
+      if (item['estado'] === 'ENTREGADO') continue;
+      try {
+        await this.expedienteService.updateExpediente(item.id, { estado: 'ENTREGADO' }, 'PROCESO_MASIVO_ENTREGA');
+        successCount++;
+      } catch (e) {
+        console.error('[BULK] Error al entregar masivo:', item.id, e);
+      }
+    }
+    this.snackBar.open(`${successCount} expedientes entregados exitosamente.`, 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
+    await this.loadData();
+    if (['ENTREGADOR', 'OTI'].includes(this.userPerfil)) await this.loadAtenciones();
+    this.isLoading.set(false);
   }
 
   updateVisibleColumns() {
@@ -491,41 +778,32 @@ export class MisExpedientes implements OnInit {
 
   exportExcel() {
     try {
-      const isHistory = this.activeTabIndex === 1;
-      const dataToExport = isHistory ? this.atencionesDataSource.data : this.dataSource.data;
+      const dataToExport = this.dataSource.data;
 
       if (dataToExport.length === 0) {
         this.snackBar.open('No hay datos para exportar.', 'Cerrar', { duration: 3000 });
         return;
       }
       
-      let rows: any[] = [];
-      if (isHistory) {
-        rows = dataToExport.map((r, i) => ({
-          'N°': i + 1,
-          'Fecha/Hora': r.created ? new Date(r.created).toLocaleString('es-PE') : '',
-          'DNI Solicitante': r['expediente_dni'] || '',
-          'Expediente': r.expand?.expediente_id?.apellidos_nombres || 'Eliminado/Cargando',
-          'Trámite': r.expand?.expediente_id?.tramite || '',
-          'Estado': 'IMPRESO'
-        }));
-      } else {
-        rows = dataToExport.map((r, i) => ({
-          'N°': i + 1,
-          'DNI Solicitante': r['dni_solicitante'],
-          'Apellidos y Nombres': r['apellidos_nombres'],
-          'Trámite': r['tramite'],
-          'Categoría': r['categoria'],
-          'Estado': r['estado'],
-          'OBS': r['observaciones'] || '',
-          'Lugar Entrega': r['lugar_entrega']
-        }));
-      }
+      const rows = dataToExport.map((r, i) => ({
+        'N°': i + 1,
+        'DNI Solicitante': r['dni_solicitante'],
+        'Apellidos y Nombres': r['apellidos_nombres'],
+        'Trámite': r['tramite'],
+        'Categoría': r['categoria'],
+        'Estado': r['estado'],
+        'OBS': r['observaciones'] || '',
+        'Lugar Entrega': r['lugar_entrega']
+      }));
       
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, isHistory ? 'Mis Atenciones' : 'Mis Expedientes');
-      XLSX.writeFile(wb, `exportacion_${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.utils.book_append_sheet(wb, ws, 'Mis Expedientes');
+      
+      const tramiteSuffix = this.selectedTramite() !== 'TODAS' ? `_${this.selectedTramite()}` : '';
+      const categoriaSuffix = this.selectedCategoria() !== 'TODAS' ? `_${this.selectedCategoria()}` : '';
+      
+      XLSX.writeFile(wb, `expedientes${tramiteSuffix}${categoriaSuffix}_${new Date().toISOString().split('T')[0]}.xlsx`);
       this.snackBar.open('Excel generado con éxito', 'Cerrar', { duration: 2000 });
     } catch (e: any) {
       console.error('[EXPORT-EXCEL] Error:', e);
@@ -534,9 +812,14 @@ export class MisExpedientes implements OnInit {
   }
 
   exportPDF() {
+    const userRole = this.authService.currentUser()?.['perfil'];
+    if (userRole === 'ADMINISTRADOR') {
+      this.exportActivityPDF();
+      return;
+    }
+    
     try {
-      const isHistory = this.activeTabIndex === 1;
-      const dataToExport = isHistory ? this.atencionesDataSource.data : this.dataSource.data;
+      const dataToExport = this.dataSource.data;
 
       if (dataToExport.length === 0) {
         this.snackBar.open('No hay datos para exportar.', 'Cerrar', { duration: 3000 });
@@ -546,41 +829,30 @@ export class MisExpedientes implements OnInit {
       const user = this.authService.currentUser();
       const date = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
       
-      const title = isHistory ? 'DRTC PUNO - Mis Atenciones (Historial)' : 'DRTC PUNO - Mis Expedientes del Día';
+      const title = 'DRTC PUNO - Mis Expedientes';
       doc.setFontSize(14);
       doc.text(title, 14, 15);
       doc.setFontSize(10);
-      doc.text(`Operador: ${user?.['nombre'] || 'N/A'} | Fecha: ${date}`, 14, 22);
+      
+      let filterText = `Filtros: Trámite: ${this.selectedTramite()} | Categoría: ${this.selectedCategoria()}`;
+      doc.text(filterText, 14, 21);
+      doc.text(`Operador: ${user?.['nombre'] || 'N/A'} | Fecha: ${date}`, 14, 27);
 
-      let head: string[][] = [];
-      let body: any[][] = [];
+      const head = [['N°', 'DNI Solic.', 'Apellidos y Nombres', 'Trámite', 'Categoría', 'Lugar', 'Estado', 'OBS']];
+      const body = dataToExport.map((r, i) => [
+        i + 1,
+        r['dni_solicitante'],
+        r['apellidos_nombres'],
+        r['tramite'],
+        r['categoria'],
+        r['lugar_entrega'],
+        r['estado'],
+        r['observaciones'] || ''
+      ]);
 
-      if (isHistory) {
-        head = [['N°', 'Fecha/Hora', 'DNI Solic.', 'Expediente', 'Trámite', 'Estado']];
-        body = dataToExport.map((r, i) => [
-          i + 1,
-          r.created ? new Date(r.created).toLocaleString('es-PE') : '',
-          r['expediente_dni'] || '',
-          r.expand?.expediente_id?.apellidos_nombres || 'Eliminado',
-          r.expand?.expediente_id?.tramite || '',
-          'IMPRESO'
-        ]);
-      } else {
-        head = [['N°', 'DNI Solic.', 'Apellidos y Nombres', 'Trámite', 'Cat.', 'Estado', 'OBS', 'Lugar']];
-        body = dataToExport.map((r, i) => [
-          i + 1, 
-          r['dni_solicitante'], 
-          r['apellidos_nombres'],
-          r['tramite'], 
-          r['categoria'], 
-          r['estado'],
-          r['observaciones'] ? 'SI' : '',
-          r['lugar_entrega']
-        ]);
-      }
 
       autoTable(doc, {
-        startY: 28,
+        startY: 32,
         head,
         body,
         headStyles: { fillColor: [10, 61, 98] },
@@ -592,6 +864,53 @@ export class MisExpedientes implements OnInit {
       this.snackBar.open('PDF generado con éxito', 'Cerrar', { duration: 2000 });
     } catch (e: any) {
       console.error('[EXPORT-PDF] Error:', e);
+      this.snackBar.open('Error al generar PDF: ' + e.message, 'Cerrar', { duration: 4000 });
+    }
+  }
+
+  exportActivityPDF() {
+    try {
+      const dataToExport = this.atencionesDataSource.data;
+
+      if (dataToExport.length === 0) {
+        this.snackBar.open('No hay registros de actividad para exportar.', 'Cerrar', { duration: 3000 });
+        return;
+      }
+      
+      const doc = new jsPDF({ orientation: 'landscape' });
+      const user = this.authService.currentUser();
+      const dateStr = new Date().toLocaleDateString('es-PE', { year: 'numeric', month: 'long', day: 'numeric' });
+      
+      doc.setFontSize(14);
+      doc.text('DRTC PUNO - Reporte de Actividad del Operador', 14, 15);
+      doc.setFontSize(10);
+      doc.text(`Operador: ${user?.['nombre'] || 'N/A'} | Perfil: ${user?.['perfil'] || 'N/A'}`, 14, 22);
+      doc.text(`Fecha del Reporte: ${dateStr}`, 14, 28);
+
+      const head = [['N°', 'Fecha/Hora', 'DNI Solic.', 'Persona (Expediente)', 'Trámite', 'Sede/Lugar', 'Estado Actual']];
+      const body = dataToExport.map((r, i) => [
+        i + 1,
+        new Date(r.fecha || r.created).toLocaleString('es-PE'),
+        r.expediente_dni,
+        r.expand?.expediente_id?.apellidos_nombres || '--',
+        r.expand?.expediente_id?.tramite || '--',
+        r.expand?.expediente_id?.lugar_entrega || 'N/A',
+        r.expand?.expediente_id?.estado || '--'
+      ]);
+
+      autoTable(doc, {
+        startY: 35,
+        head,
+        body,
+        headStyles: { fillColor: [41, 128, 185] }, // Blue for activity
+        styles: { fontSize: 8 },
+        alternateRowStyles: { fillColor: [235, 245, 251] }
+      });
+
+      doc.save(`actividad_${user?.['nombre']?.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+      this.snackBar.open('Reporte de actividad generado', 'Cerrar', { duration: 2000 });
+    } catch (e: any) {
+      console.error('[EXPORT-ACTIVITY-PDF] Error:', e);
       this.snackBar.open('Error al generar PDF: ' + e.message, 'Cerrar', { duration: 4000 });
     }
   }

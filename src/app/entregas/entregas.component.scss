@@ -1,41 +1,21 @@
 .page-wrapper {
-  padding: 1.5rem;
   max-width: 1400px;
   margin: 0 auto;
 
-  .header-actions {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-
-    .titles {
-      h1 { margin: 0; font-size: 1.75rem; font-weight: 600; color: #2c3e50; }
-      p { margin: 0.25rem 0 0; color: #7f8c8d; font-size: 0.9rem; }
-    }
-
-    .location-filter {
-      margin-left: auto;
-      margin-right: 1rem;
-      mat-form-field { width: 200px; }
-    }
-  }
-
   .table-container {
     overflow-x: auto;
-    background: #fff;
+    background: var(--surface);
     border-radius: 8px;
   }
 
   .empty-cell {
     text-align: center;
     padding: 3rem !important;
-    color: #7f8c8d;
+    color: var(--text-secondary);
     
-    mat-icon { font-size: 48px; width: 48px; height: 48px; color: #bdc3c7; margin-bottom: 1rem; }
+    mat-icon { font-size: 48px; width: 48px; height: 48px; color: var(--border-color); margin-bottom: 1rem; }
     p { font-size: 1.1rem; margin: 0; }
   }
 
-  .badge { background: #f1f2f6; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em; font-weight: 500; }
-  .status-chip { background: #e0e0e0; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; font-weight: 500; color: #333; }
+  .badge { background: var(--border-color); color: var(--text-secondary); padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 0.9em; font-weight: 500; }
 }

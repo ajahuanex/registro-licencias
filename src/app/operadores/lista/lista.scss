@@ -22,14 +22,14 @@
   .titles {
     h1 {
       font-size: 1.8rem;
-      color: #2c3e50;
+      color: var(--header-color);
       margin: 0 0 0.5rem 0;
       font-weight: 700;
     }
   
     p {
       margin: 0;
-      color: #64748b;
+      color: var(--text-secondary);
     }
   }
 
@@ -58,18 +58,18 @@
 }
 
 .mat-mdc-table {
-  background: white;
+  background: var(--surface);
 }
 
 .table-row-hover:hover {
-  background-color: #f8fafc;
+  background-color: var(--row-hover);
 }
 
 .mat-mdc-header-row {
-  background-color: #f1f5f9;
+  background-color: var(--surface-header);
   
   th {
-    color: #475569;
+    color: var(--text-secondary);
     font-weight: 600;
     font-size: 0.85rem;
     text-transform: uppercase;
@@ -78,7 +78,7 @@
 }
 
 .mat-mdc-cell {
-  color: #334155;
+  color: var(--text-primary);
   font-size: 0.95rem;
 }
 
@@ -101,12 +101,6 @@
   border-radius: 12px;
   font-size: 0.8rem;
   font-weight: 600;
-
-  &.oti { background-color: #fee2e2; color: #b91c1c; } /* Rojo */
-  &.admin { background-color: #ffedd5; color: #c2410c; } /* Naranja */
-  &.sup { background-color: #e0f2fe; color: #0284c7; } /* Azul */
-  &.reg { background-color: #dcfce7; color: #15803d; } /* Verde */
-  &.ent { background-color: #f3e8ff; color: #7e22ce; } /* Morado */
 }
 
 .empty-cell {

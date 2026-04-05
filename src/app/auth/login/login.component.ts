@@ -32,6 +32,7 @@ export class LoginComponent {
   // Use Angular 17+ Signals
   loginError = signal<string | null>(null);
   isLoading = signal<boolean>(false);
+  hidePassword = signal<boolean>(true);
 
   loginForm = this.fb.group({
     dni: ['', [Validators.required, Validators.pattern(/^[0-9]{8}$/)]],

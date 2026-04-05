@@ -1,10 +1,12 @@
-import { Component, inject, OnInit, signal, computed } from '@angular/core';
+import { Component, inject, OnInit, signal, computed, ViewChild, TemplateRef, OnDestroy } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ExpedienteService } from '../core/services/expediente.service';
 import { AuthService } from '../core/services/auth.service';
 import { ReporteService } from '../core/services/reporte.service';
 import { RecordModel } from 'pocketbase';
+import { PocketbaseService } from '../core/services/pocketbase.service';
+import { MainLayoutComponent } from '../layout/main-layout/main-layout.component';
 
 import { MatTableModule } from '@angular/material/table';
 import { MatCardModule } from '@angular/material/card';
@@ -39,14 +41,19 @@ import autoTable from 'jspdf-autotable';
   templateUrl: './entregas.component.html',
   styleUrl: './entregas.component.scss'
 })
-export class EntregasComponent implements OnInit {
-  private expedienteService = inject(ExpedienteService);
-  private authService = inject(AuthService);
+export class EntregasComponent implements OnInit, OnDestroy {
+  public authService = inject(AuthService);
+  private expService = inject(ExpedienteService);
   private snackBar = inject(MatSnackBar);
-  private reporteService = inject(ReporteService);
+  public mainLayout = inject(MainLayoutComponent, { optional: true });
 
-  lugares = ['Puno', 'Juliaca'];
-  selectedLugar = signal('Puno');
+  @ViewChild('mobileFilters') mobileFiltersTemplate!: TemplateRef<any>;
+  private reporteService = inject(ReporteService);
+  private pbService = inject(PocketbaseService);
+  private expedienteService = inject(ExpedienteService);
+
+  lugares: string[] = [];
+  selectedLugar = signal('');
   records = signal<RecordModel[]>([]);
   deliveredRecords = signal<RecordModel[]>([]);
   isLoading = signal(true);
@@ -91,16 +98,49 @@ export class EntregasComponent implements OnInit {
   });
 
   displayedColumns: string[] = ['dni_solicitante', 'apellidos_nombres', 'tramite', 'categoria', 'fecha', 'acciones'];
-  deliveredColumns: string[] = ['num', 'dni_solicitante', 'apellidos_nombres', 'tramite', 'categoria', 'fecha_entrega'];
+  deliveredColumns: string[] = ['num', 'dni_solicitante', 'apellidos_nombres', 'tramite', 'categoria', 'fecha_entrega', 'acciones'];
 
   private datePipe = inject(DatePipe);
 
   async ngOnInit() {
-    const sede = this.currentUserSede();
-    if (sede) {
-      this.selectedLugar.set(sede);
+    this.pbService.sedesSistema$.subscribe(sedes => {
+      this.lugares = sedes
+        .filter(s => s.es_centro_entrega !== false)
+        .map(s => s.nombre);
+      
+      const user = this.authService.currentUser();
+      let currentSede = user?.['sede'];
+      
+      // Encontrar la sede correspondiente sin importar mayúsculas/minúsculas
+      if (currentSede) {
+        const matched = this.lugares.find(l => l.toLowerCase() === currentSede.toLowerCase());
+        if (matched) currentSede = matched;
+      }
+
+      if (currentSede && this.lugares.includes(currentSede)) {
+        this.selectedLugar.set(currentSede);
+      } else if (this.lugares.length > 0) {
+        this.selectedLugar.set(this.lugares[0]);
+      }
+      if (this.selectedLugar()) {
+        this.loadData();
+      }
+    });
+
+    // Register mobile filters
+    if (this.mainLayout) {
+      setTimeout(() => {
+        if (this.mobileFiltersTemplate) {
+          this.mainLayout?.mobileFilterTemplate.set(this.mobileFiltersTemplate);
+        }
+      });
     }
-    await this.loadData();
+  }
+
+  ngOnDestroy() {
+    if (this.mainLayout) {
+      this.mainLayout.mobileFilterTemplate.set(null);
+    }
   }
 
   canDeliver() {
@@ -109,9 +149,12 @@ export class EntregasComponent implements OnInit {
     if (!user) return false;
     if (user['perfil'] === 'OTI' || user['perfil'] === 'ADMINISTRADOR') return true;
     
+    // Si la selección es TODAS, no se puede hacer acción de entrega sin especificar dónde.
+    const sLugar = String(this.selectedLugar()).toLowerCase().trim();
+    if (sLugar === 'todas') return false;
+
     // Compare parsed strings cleanly
     const uSede = String(this.currentUserSede()).toLowerCase().trim();
-    const sLugar = String(this.selectedLugar()).toLowerCase().trim();
     return uSede === sLugar;
   }
 
@@ -229,6 +272,30 @@ export class EntregasComponent implements OnInit {
     }
   }
 
+  async revertirEntrega(id: string) {
+    if (!this.canDeliver()) {
+      alert('Acceso Denegado: No tiene permisos para revertir entregas en esta Sede.');
+      return;
+    }
+
+    if (!confirm('¿Revertir Entrega?\n\n¿Estás seguro de revertir la entrega? El expediente volverá a PENDIENTES.')) return;
+
+    this.isLoading.set(true);
+    try {
+      await this.expedienteService.updateExpediente(
+        id,
+        { estado: 'VERIFICADO' },
+        'REVERSION_ENTREGA'
+      );
+      this.snackBar.open('Entrega revertida correctamente, regresó a Pendientes', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
+      await this.loadData();
+    } catch (error: any) {
+      console.error('Error revirtiendo entrega', error);
+      this.snackBar.open('Error al revertir: ' + error.message, 'Cerrar', { duration: 3000, panelClass: ['error-snackbar'] });
+      this.isLoading.set(false);
+    }
+  }
+
   // --- Export Methods ---
   exportExcel() {
     const rows = this.filteredDeliveredRecords().map((r, i) => ({
@@ -237,7 +304,7 @@ export class EntregasComponent implements OnInit {
       'Apellidos y Nombres': r['apellidos_nombres'],
       'Trámite': r['tramite'],
       'Categoría': r['categoria'],
-      'Fecha Entrega': this.datePipe.transform(r['updated'], 'dd/MM/yyyy HH:mm') || ''
+      'Fecha Entrega': this.datePipe.transform(r['fecha_entrega'] || r['updated'] || r['created'], 'dd/MM/yyyy HH:mm') || '--'
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -319,7 +386,7 @@ export class EntregasComponent implements OnInit {
       r['apellidos_nombres'], 
       r['tramite'], 
       r['categoria'],
-      this.datePipe.transform(r['updated'], 'dd/MM/yyyy HH:mm') || ''
+      this.datePipe.transform(r['fecha_entrega'] || r['updated'] || r['created'], 'dd/MM/yyyy HH:mm') || '--'
     ]);
 
     autoTable(doc, {

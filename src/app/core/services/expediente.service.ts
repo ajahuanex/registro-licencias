@@ -13,6 +13,7 @@ export interface ExpedienteCreate {
   lugar_entrega: string;
   observaciones?: string;
   fecha_registro: string;
+  fecha_entrega?: string; // New field for delivery date
 }
 
 @Injectable({
@@ -49,13 +50,17 @@ export class ExpedienteService {
         operador_nombre: model['nombre'] || model['username'] || 'Desconocido',
         operador_perfil: model['perfil'] || '',
         accion,
+        fecha: new Date().toISOString(),
         estado_anterior: opts?.estadoAnterior || '',
         estado_nuevo:    opts?.estadoNuevo || '',
         detalles:        detalles?.trim() || 'Log de sistema'
       };
       
       console.log("[HISTORY DEBUG] Intentando guardar log:", payload);
-      await this.pbService.pb.collection('historial_acciones').create(payload);
+      await Promise.all([
+         this.pbService.pb.collection('historial_acciones').create(payload),
+         this.pbService.pb.collection('historial_expedientes').create(payload)
+      ]);
     } catch (e: any) {
       console.error('[HISTORY ERROR] No se pudo guardar el log:', e);
       if (e.response) {
@@ -151,6 +156,11 @@ export class ExpedienteService {
       observaciones: finalObs   // always use the resolved value
     };
 
+    // If status is ENTREGADO and fecha_entrega is not provided, set it to now
+    if (safePayload.estado === 'ENTREGADO' && !safePayload.fecha_entrega) {
+      safePayload.fecha_entrega = new Date().toISOString();
+    }
+
     const record = await this.pbService.pb.collection(this.collectionName).update(id, safePayload);
     
     const detalles = `Estado: ${safePayload.estado}. Obs: ${finalObs ? finalObs.slice(0, 80) + (finalObs.length > 80 ? '…' : '') : 'Sin obs.'}`;
@@ -159,9 +169,9 @@ export class ExpedienteService {
   }
 
   private toPbDate(date: Date): string {
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
-           `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    // PocketBase >= 0.22 strictly requires RFC3339 for system date fields ('updated', 'created')
+    // toISOString gives YYYY-MM-DDTHH:mm:ss.SSSZ. Replacing 'T' with space matches PB convention.
+    return date.toISOString().replace('T', ' ');
   }
 
   /**
@@ -193,8 +203,11 @@ export class ExpedienteService {
    */
   async getPendingDeliveries(lugar: string): Promise<RecordModel[]> {
     try {
+      const filterBase = `estado = 'VERIFICADO'`;
+      const filterStr = (lugar && lugar !== 'TODAS') ? `${filterBase} && lugar_entrega = '${lugar}'` : filterBase;
+
       return await this.pbService.pb.collection('expedientes').getFullList({
-        filter: `estado = 'VERIFICADO' && lugar_entrega = '${lugar}'`
+        filter: filterStr
       });
     } catch (error) {
       console.error('Error fetching pending deliveries:', error);
@@ -211,7 +224,9 @@ export class ExpedienteService {
       const start = new Date(year, month - 1, day, 0, 0, 0, 0);
       const end = new Date(year, month - 1, day, 23, 59, 59, 999);
 
-      const filterStr = `estado = 'ENTREGADO' && lugar_entrega = '${lugar}' && updated >= '${this.toPbDate(start)}' && updated <= '${this.toPbDate(end)}'`;
+      // Backend (PocketBase remote) throws 400 when filtering by updated.
+      // Using fecha_registro instead to safely fetch records.
+      const filterStr = `estado = 'ENTREGADO' && lugar_entrega = '${lugar}' && fecha_registro >= "${this.toPbDate(start)}" && fecha_registro <= "${this.toPbDate(end)}"`;
 
       return await this.pbService.pb.collection('expedientes').getFullList({
         filter: filterStr
@@ -233,7 +248,11 @@ export class ExpedienteService {
     perPage: number = 20
   ): Promise<{ items: RecordModel[], totalItems: number }> {
     try {
-      const filterStr = `estado = 'ENTREGADO' && lugar_entrega = '${lugar}' && updated >= '${this.toPbDate(start)}' && updated <= '${this.toPbDate(end)}'`;
+      const filterBase = `estado = 'ENTREGADO'`;
+      const filterLugar = (lugar && lugar !== 'TODAS') ? `lugar_entrega = '${lugar}' && ` : ``;
+      // Prioritize filtering by fecha_entrega if possible, or fallback to fecha_registro (less ideal for deliveries)
+      // Custom fields like fecha_entrega work well with filters in Remote PB.
+      const filterStr = `${filterLugar}${filterBase} && (fecha_entrega >= "${this.toPbDate(start)}" && fecha_entrega <= "${this.toPbDate(end)}")`;
 
       const result = await this.pbService.pb.collection(this.collectionName).getList(page, perPage, {
         filter: filterStr
@@ -287,6 +306,33 @@ export class ExpedienteService {
         return [];
      }
   }
+  /**
+   * Retrieves records within a date range using fecha_registro.
+   */
+  async getByDateRange(start: Date, end: Date, filterExtra?: string): Promise<RecordModel[]> {
+    try {
+      let filter = `fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
+      if (filterExtra) filter += ` && (${filterExtra})`;
+      
+      return await this.pbService.pb.collection(this.collectionName).getFullList({
+        filter,
+        expand: 'operador'
+      });
+    } catch (error) {
+      console.error('Error fetching by date range:', error);
+      return [];
+    }
+  }
+
+  async getMyActionsCount(userId: string, start: Date, end: Date): Promise<number> {
+    try {
+      const filter = `operador_id = '${userId}' && fecha >= '${start.toISOString()}' && fecha <= '${end.toISOString()}'`;
+      const result = await this.pbService.pb.collection('historial_acciones').getList(1, 1, { filter });
+      return result.totalItems;
+    } catch {
+      return 0;
+    }
+  }
 
   /**
    * Obtiene el historial de atenciones (impresiones) de un operador específico.
@@ -295,20 +341,27 @@ export class ExpedienteService {
   async getMisAtenciones(operadorId: string): Promise<RecordModel[]> {
     try {
       const options = {
-        filter: `operador_id = '${operadorId}' && (accion = 'MARCADO_RAPIDO_IMPRESO' || accion = 'MARCADO_MASIVO_IMPRESO' || accion = 'PROCESO_MASIVO_IMPRESOR' || accion = 'EDICION_FORMULARIO')`
+        filter: `operador_id = '${operadorId}'`
       };
       const logs = await this.pbService.pb.collection('historial_acciones').getFullList(options);
+      
+      if (logs.length === 0) return [];
+      
+      // Sort manually using our explicit fecha (Bypass PocketBase index bug on -created)
+      logs.sort((a, b) => new Date(b['fecha']).getTime() - new Date(a['fecha']).getTime());
 
-      // Solo consideramos los logs que verdaderamente pasaron a estado IMPRESO, si estamos incluyendo EDICION_FORMULARIO
-      const impresionesLogs = logs.filter(l => 
-        l['accion'].includes('IMPRESO') || l['estado_nuevo'] === 'IMPRESO' || 
-        (l['detalles'] && l['detalles'].includes('Estado: IMPRESO'))
-      );
-
-      if (impresionesLogs.length === 0) return [];
+      // Deduplicate: Keep only the latest action per expediente_id (since they are sorted DESC)
+      const uniqueLogs = [];
+      const seenIds = new Set();
+      for (const log of logs) {
+         if (!seenIds.has(log['expediente_id'])) {
+            uniqueLogs.push(log);
+            seenIds.add(log['expediente_id']);
+         }
+      }
 
       // 2. Obtener IDs únicos de expedientes
-      const ids = [...new Set(impresionesLogs.map(l => l['expediente_id']))].filter(id => !!id);
+      const ids = Array.from(seenIds).filter(id => !!id) as string[];
       
       // 3. Cargar expedientes por bloques (chunks de 40) para no saturar el largo del filtro (error 400)
       const chunkSize = 40;
@@ -324,12 +377,26 @@ export class ExpedienteService {
       // 4. Mapear los datos del expediente al objeto "expand" del log
       const expMap = new Map(exps.map(e => [e.id, e]));
       
-      return impresionesLogs.map(log => {
+      return uniqueLogs.map(log => {
         const exp = expMap.get(log['expediente_id']);
         if (exp) {
           (log as any).expand = { expediente_id: exp };
         }
         return log;
+      }).filter(log => {
+        const estadoActual = (log as any).expand?.expediente_id?.estado || '';
+        const logPerfil = (log as any).operador_perfil || '';
+        
+        // If an Impresor reverted an item back to EN PROCESO, hide it
+        if (logPerfil === 'IMPRESOR' && estadoActual === 'EN PROCESO') return false;
+        
+        // If a Supervisor reverted an item back to IMPRESO (or it went all the way to EN PROCESO), hide it
+        if (logPerfil === 'SUPERVISOR' && (estadoActual === 'IMPRESO' || estadoActual === 'EN PROCESO')) return false;
+
+        // If an Entregador reverted an item back to VERIFICADO (or lower), hide it
+        if (logPerfil === 'ENTREGADOR' && (estadoActual === 'VERIFICADO' || estadoActual === 'IMPRESO' || estadoActual === 'EN PROCESO')) return false;
+
+        return true;
       });
 
     } catch (error) {
