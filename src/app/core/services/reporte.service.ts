@@ -80,9 +80,9 @@ export class ReporteService {
       generado_por: user.id,
       generado_por_nombre: nombreOperador,
       tipo_reporte: data.tipo_reporte,
-      fecha_reporte: data.fecha_reporte,
+      fecha_reporte: data.fecha_reporte + ' 00:00:00', // Ensure PB date format
       total_registros: data.total_registros,
-      sede: data.sede || 'Ambas',
+      sede: data.sede ? (data.sede.charAt(0).toUpperCase() + data.sede.slice(1).toLowerCase()) : 'Ambas',
       hash_verificacion: hash,
       snapshot: snapshot ?? null
     });
