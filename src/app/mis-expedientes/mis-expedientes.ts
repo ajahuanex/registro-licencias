@@ -35,7 +35,7 @@ import autoTable from 'jspdf-autotable';
 // ===== MODAL COMPONENT =====
 import { Component as CompDeco, Inject } from '@angular/core';
 
-export const TRAMITES_MTC = ['Obtención', 'Revalidación', 'Duplicado', 'Recategorización'];
+export const TRAMITES_MTC = ['OBTENCIÓN', 'REVALIDACIÓN', 'DUPLICADO', 'RECATEGORIZACIÓN'];
 export const CATEGORIAS_MTC = [
   { value: 'A-I',    label: 'A-I   — Vehículos particulares' },
   { value: 'A-IIa',  label: 'A-IIa — Taxis / transporte público menor' },
@@ -81,12 +81,12 @@ export const CATEGORIAS_MTC = [
     </mat-form-field>
     <mat-form-field appearance="outline"><mat-label>Tipo de Trámite</mat-label>
       <mat-select formControlName="tramite" (selectionChange)="onTramiteChange()">
-        @for(t of tramites; track t){<mat-option [value]="t">{{t}}</mat-option>}
+        @for(t of tramites(); track t){<mat-option [value]="t">{{t}}</mat-option>}
       </mat-select><mat-icon matPrefix>description</mat-icon>
     </mat-form-field>
     <mat-form-field appearance="outline"><mat-label>Categoría</mat-label>
       <mat-select formControlName="categoria">
-        @for(c of categoriasDisponibles; track c.value){
+        @for(c of categoriasDisponibles(); track c.value){
           <mat-option [value]="c.value">{{c.label}}</mat-option>
         }
       </mat-select><mat-icon matPrefix>drive_eta</mat-icon>
@@ -147,12 +147,25 @@ export const CATEGORIAS_MTC = [
     .two-col  { grid-column: span 2; }
     mat-form-field { width: 100%; }
     mat-checkbox { color: #1a4f8f; font-weight: 500; }
+
+    @media (max-width: 768px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      .two-col {
+        grid-column: 1 / -1 !important;
+      }
+      .registration-checks {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
   `]
 })
 export class ExpedienteFormModal implements OnInit {
-  // Trámites según normativa MTC
-  tramites = TRAMITES_MTC;
-  categoriasDisponibles = CATEGORIAS_MTC;
+  // Dynamic tramites/categorias loaded from `configuracion_sistema`
+  tramites = signal<string[]>(TRAMITES_MTC);
+  categoriasDisponibles = signal<{ value: string; label: string }[]>(CATEGORIAS_MTC);
 
   lugares: string[] = [];
   saving = signal(false);
@@ -191,6 +204,21 @@ export class ExpedienteFormModal implements OnInit {
       this.form.get('observaciones')?.updateValueAndValidity();
     }
 
+    // Dynamic validation for registration checks
+    this.form.get('reviso_sanciones')?.valueChanges.subscribe(checked => {
+      if (checked) {
+        this.form.get('observaciones')?.setValidators([Validators.minLength(5)]);
+      } else {
+        this.form.get('observaciones')?.setValidators([Validators.required, Validators.minLength(5)]);
+      }
+      this.form.get('observaciones')?.updateValueAndValidity();
+    });
+
+    // Initial trigger for new records
+    if (!this.data) {
+       this.form.get('reviso_sanciones')?.updateValueAndValidity({ emitEvent: true });
+    }
+
     try {
       const records = await this.pbService.pb.collection('sedes').getFullList({ sort: 'nombre' });
       this.lugares = records
@@ -204,6 +232,28 @@ export class ExpedienteFormModal implements OnInit {
       this.lugares = ['PUNO', 'JULIACA'];
       if (!this.form.get('lugar_entrega')?.value) this.form.get('lugar_entrega')?.setValue('PUNO');
     }
+
+    // Load dynamic tramites & categorias
+    try {
+      const cfgRecs = await this.pbService.pb.collection('configuracion_sistema').getFullList();
+      const tramCfg = cfgRecs.find(r => r['clave'] === 'tramites');
+      const catCfg  = cfgRecs.find(r => r['clave'] === 'categorias');
+      if (tramCfg) {
+        const vals: string[] = JSON.parse(tramCfg['valores'] || '[]');
+        if (vals.length) this.tramites.set(vals);
+      }
+      if (catCfg) {
+        const vals: string[] = JSON.parse(catCfg['valores'] || '[]');
+        if (vals.length) {
+          // Map raw values to { value, label } — label same as value for dynamic entries
+          const mapped = vals.map(v => {
+            const found = CATEGORIAS_MTC.find(c => c.value === v);
+            return found ?? { value: v, label: v };
+          });
+          this.categoriasDisponibles.set(mapped);
+        }
+      }
+    } catch (_) { /* fallback to static constants already set */ }
   }
 
   get estados(): string[] {
@@ -238,6 +288,7 @@ export class ExpedienteFormModal implements OnInit {
       } else {
         const user = this.authServiceModal.currentUser();
         val.operador = user?.id;
+        val.fecha_registro = new Date().toISOString();
         await this.expedienteService.registerExpediente(val);
       }
       this.dialogRef.close(true);
@@ -437,7 +488,7 @@ export class MisExpedientes implements OnInit {
       } else {
         filterStr = `fecha_registro >= "${startStr}" && fecha_registro <= "${endStr}"`;
         
-        const isPrivileged = ['IMPRESOR', 'SUPERVISOR', 'ADMINISTRADOR', 'OTI'].includes(user['perfil']);
+        const isPrivileged = ['IMPRESOR', 'SUPERVISOR', 'ADMINISTRADOR', 'OTI', 'DIRECTIVO'].includes(user['perfil']);
         if (!isPrivileged) {
             filterStr += ` && operador = '${user.id}'`;
         }

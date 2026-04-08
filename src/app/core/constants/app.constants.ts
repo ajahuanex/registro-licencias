@@ -17,8 +17,10 @@ export const PERFILES_SISTEMA = [
   'IMPRESOR',
   'SUPERVISOR',
   'ENTREGADOR',
+  'DIRECTIVO',
   'ADMINISTRADOR',
-  'OTI'
+  'OTI',
+  'BLOQUEADO'
 ] as const;
 
 export type PerfilSistema = typeof PERFILES_SISTEMA[number];
@@ -28,6 +30,7 @@ export const ESTADOS_POR_PERFIL: Record<string, string[]> = {
   IMPRESOR:         ['IMPRESO', 'OBSERVADO', 'EN PROCESO'],
   SUPERVISOR:       ['VERIFICADO', 'OBSERVADO', 'RECHAZADO', 'ANULADO', 'EN PROCESO'],
   ENTREGADOR:       ['ENTREGADO', 'OBSERVADO'],
+  DIRECTIVO:        [],
   ADMINISTRADOR:    [...ESTADOS_SISTEMA],
   OTI:              [...ESTADOS_SISTEMA],
 };

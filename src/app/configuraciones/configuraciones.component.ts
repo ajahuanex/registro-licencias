@@ -151,7 +151,7 @@ export class AdminAuthModal {
 
       // ── 1. expedientes ──────────────────────────────────────────────────
       this.log('');
-      this.log('⏳ [1/4] Verificando "expedientes"...');
+      this.log('⏳ [1/6] Verificando "expedientes"...');
       if (expCol) {
         this.log('  ⏳ Auditando integridad...');
         let fields = [...expCol.fields];
@@ -206,10 +206,10 @@ export class AdminAuthModal {
             { name: 'operador', type: 'relation', required: true, options: { collectionId: opId, maxSelect: 1 } },
             { name: 'dni_solicitante', type: 'text', required: true },
             { name: 'apellidos_nombres', type: 'text', required: true },
-            { name: 'tramite', type: 'text', required: true },
+            { name: 'tramite', type: 'select', required: true, values: ['OBTENCIÓN', 'REVALIDACIÓN', 'DUPLICADO', 'RECATEGORIZACIÓN'] },
             { name: 'estado', type: 'select', required: true, values: ESTADOS_SISTEMA },
-            { name: 'categoria', type: 'text', required: true },
-            { name: 'lugar_entrega', type: 'text', required: true },
+            { name: 'categoria', type: 'select', required: true, values: ['A-I', 'A-IIa', 'A-IIb', 'A-IIIa', 'A-IIIb', 'A-IIIc', 'B-I', 'B-IIa', 'B-IIb', 'B-IIc'] },
+            { name: 'lugar_entrega', type: 'select', required: true, values: ['PUNO', 'JULIACA'] },
             { name: 'fecha_registro', type: 'date', required: true },
             { name: 'fecha_entrega', type: 'date', required: false }
           ]
@@ -218,19 +218,31 @@ export class AdminAuthModal {
 
       // ── 2. operadores ──────────────────────────────────────────────────
       this.log('');
-      this.log('⏳ [2/4] Verificando "operadores"...');
+      this.log('⏳ [2/6] Verificando "operadores"...');
       if (opColActual) {
+        // El campo sede debe mantenerse como texto libre para permitir sedes dinámicas
         let fields = [...opColActual.fields];
         let needsUpdate = false;
 
-        // El campo sede debe mantenerse como texto libre para permitir sedes dinámicas
+        // ELIMINAR CAMPO LEGACY si existe
+        const legacyIdx = fields.findIndex((f: any) => f.name === 'sede_legacy_select_sync');
+        if (legacyIdx !== -1) {
+           this.log('  🗑️ Eliminando campo sede legacy...');
+           fields.splice(legacyIdx, 1);
+           needsUpdate = true;
+        }
+
+        // Si el campo sede es un SELECT (antiguo), migrarlo a TEXTO
         const sdField = fields.find((f: any) => f.name === 'sede');
         if (sdField && sdField.type !== 'text') {
-            this.log('  ⚠️ Migrando campo "sede" a texto libre (soporte dinámico)...');
-            sdField.name = 'sede_legacy_select_sync';
-            fields.push({
-              name: 'sede', type: 'text', required: false
-            });
+            this.log('  ⚠️ Migrando campo "sede" a texto libre...');
+            sdField.type = 'text';
+            if (sdField.values) delete sdField.values;
+            if (sdField.options) delete sdField.options;
+            needsUpdate = true;
+        } else if (!sdField) {
+            this.log('  ➕ Añadiendo campo "sede" (texto)...');
+            fields.push({ name: 'sede', type: 'text', required: false });
             needsUpdate = true;
         }
 
@@ -246,6 +258,15 @@ export class AdminAuthModal {
           }
         }
         if (needsUpdate) await patchCol(opId, { fields });
+
+        // SEED DE SEDE DEFAULT (PUNO)
+        this.log('  ⏳ Verificando sedes por defecto...');
+        const ops = await this.pbService.pb.collection('operadores').getFullList();
+        for (const op of ops) {
+          if (!op['sede'] || op['sede'].trim() === '') {
+            await this.pbService.pb.collection('operadores').update(op.id, { sede: 'PUNO' });
+          }
+        }
         
         // Asegurar reglas de Auth y DNI Identity (Soporte pocketbase v0.23)
         await patchCol(opId, { 
@@ -257,17 +278,152 @@ export class AdminAuthModal {
         this.log('  ✅ "operadores" — esquema y reglas actualizados.');
       }
 
+      // ── 2.5. sedes ─────────────────────────────────────────────────────
+      this.log('');
+      this.log('⏳ [3/6] Verificando "sedes"...');
+      const sedesCol = await getCol('sedes');
+      if (sedesCol) {
+        let fields = [...sedesCol.fields];
+        if (!fields.find((f: any) => f.name === 'es_centro_entrega')) {
+           fields.push({ name: 'es_centro_entrega', type: 'bool', required: false });
+           await patchCol(sedesCol.id, { fields });
+           this.log('  ✅ "sedes" actualizado con flag de entrega.');
+        } else {
+           this.log('  ✅ "sedes" verificado.');
+        }
+        
+        // Seed if empty
+        const records = await this.pbService.pb.collection('sedes').getList(1, 1);
+        if (records.totalItems === 0) {
+           this.log('  ⏳ Poblando sedes iniciales...');
+           await this.pbService.pb.collection('sedes').create({ nombre: 'PUNO', es_centro_entrega: true });
+           await this.pbService.pb.collection('sedes').create({ nombre: 'JULIACA', es_centro_entrega: true });
+           this.log('  ✅ Sedes pobladas.');
+        }
+      } else {
+        this.log('  ❌ Creando "sedes"...');
+        const newSedeCol = await createCol({
+          name: 'sedes', type: 'base',
+          listRule: '@request.auth.id != ""', viewRule: '@request.auth.id != ""',
+          createRule: '@request.auth.id != ""', updateRule: '@request.auth.id != ""',
+          fields: [ { name: 'nombre', type: 'text', required: true }, { name: 'es_centro_entrega', type: 'bool', required: false } ]
+        });
+        
+        this.log('  ⏳ Poblando sedes iniciales...');
+        await this.pbService.pb.collection('sedes').create({ nombre: 'PUNO', es_centro_entrega: true });
+        await this.pbService.pb.collection('sedes').create({ nombre: 'JULIACA', es_centro_entrega: true });
+        this.log('  ✅ Sedes creadas y pobladas.');
+      }
+
       // ── 3. historial_acciones ──────────────────────────────────────────
       this.log('');
-      this.log('⏳ [3/4] Verificando "historial_acciones"...');
+      this.log('⏳ [4/6] Verificando "historial_acciones"...');
       const histCol = await getCol('historial_acciones');
       if (histCol) {
-        this.log('  ✅ Historial verificado.');
+        let fields = [...histCol.fields];
+        let needsUpdate = false;
+        
+        // Remove 'required: true' from expediente_id if set
+        const expIdField = fields.find((f: any) => f.name === 'expediente_id');
+        if (expIdField && expIdField.required) {
+           expIdField.required = false;
+           needsUpdate = true;
+        }
+
+        if (!fields.find((f: any) => f.name === 'ip_publica')) {
+           fields.push({ name: 'ip_publica', type: 'text', required: false });
+           needsUpdate = true;
+        }
+        if (!fields.find((f: any) => f.name === 'user_agent')) {
+           fields.push({ name: 'user_agent', type: 'text', required: false });
+           needsUpdate = true;
+        }
+        if (!fields.find((f: any) => f.name === 'fecha')) {
+           fields.push({ name: 'fecha', type: 'date', required: false });
+           needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+           await patchCol(histCol.id, { fields });
+           this.log('  ✅ "historial_acciones" actualizado con auditoría IP.');
+        } else {
+           this.log('  ✅ Historial verificado.');
+        }
+
+        // Asegurar patrón de ID
+        const idF = fields.find((f:any) => f.name === 'id');
+        if (idF && !idF.autogeneratePattern) {
+          idF.autogeneratePattern = '[a-z0-9]{15}';
+          idF.min = 15; idF.max = 15;
+          await patchCol(histCol.id, { fields });
+        }
+      } else {
+        this.log('  ❌ Creando "historial_acciones"...');
+        await createCol({
+          name: 'historial_acciones', type: 'base', system: false,
+          listRule: '@request.auth.id != ""', viewRule: '@request.auth.id != ""',
+          createRule: '@request.auth.id != ""', updateRule: '@request.auth.id != ""',
+          fields: [
+            { name: 'expediente_id', type: 'text', required: false },
+            { name: 'expediente_dni', type: 'text', required: false },
+            { name: 'operador_id', type: 'text', required: true },
+            { name: 'operador_nombre', type: 'text', required: false },
+            { name: 'operador_perfil', type: 'text', required: false },
+            { name: 'accion', type: 'text', required: true },
+            { name: 'estado_anterior', type: 'text', required: false },
+            { name: 'estado_nuevo', type: 'text', required: false },
+            { name: 'detalles', type: 'text', required: false },
+            { name: 'ip_publica', type: 'text', required: false },
+            { name: 'user_agent', type: 'text', required: false },
+            { name: 'fecha', type: 'date', required: false }
+          ]
+        });
+      }
+
+      // ── 3.5. historial_expedientes ─────────────────────────────────────
+      this.log('');
+      this.log('⏳ [5/6] Verificando "historial_expedientes"...');
+      const histExpCol = await getCol('historial_expedientes');
+      if (histExpCol) {
+        let fields = [...histExpCol.fields];
+        let needsUpdate = false;
+        if (!fields.find((f: any) => f.name === 'ip_publica')) { fields.push({ name: 'ip_publica', type: 'text', required: false }); needsUpdate = true; }
+        if (!fields.find((f: any) => f.name === 'user_agent')) { fields.push({ name: 'user_agent', type: 'text', required: false }); needsUpdate = true; }
+        if (!fields.find((f: any) => f.name === 'fecha')) { fields.push({ name: 'fecha', type: 'date', required: false }); needsUpdate = true; }
+        if (needsUpdate) await patchCol(histExpCol.id, { fields });
+
+        // Asegurar patrón de ID
+        const idF = fields.find((f:any) => f.name === 'id');
+        if (idF && !idF.autogeneratePattern) {
+          idF.autogeneratePattern = '[a-z0-9]{15}';
+          idF.min = 15; idF.max = 15;
+          await patchCol(histExpCol.id, { fields });
+        }
+      } else {
+        await createCol({
+          name: 'historial_expedientes', type: 'base',
+          listRule: '@request.auth.id != ""', viewRule: '@request.auth.id != ""',
+          createRule: '@request.auth.id != ""', updateRule: '@request.auth.id != ""',
+          fields: [
+            { name: 'expediente_id', type: 'text', required: false },
+            { name: 'expediente_dni', type: 'text', required: false },
+            { name: 'operador_id', type: 'text', required: true },
+            { name: 'operador_nombre', type: 'text', required: false },
+            { name: 'operador_perfil', type: 'text', required: false },
+            { name: 'accion', type: 'text', required: true },
+            { name: 'estado_anterior', type: 'text', required: false },
+            { name: 'estado_nuevo', type: 'text', required: false },
+            { name: 'detalles', type: 'text', required: false },
+            { name: 'ip_publica', type: 'text', required: false },
+            { name: 'user_agent', type: 'text', required: false },
+            { name: 'fecha', type: 'date', required: false }
+          ]
+        });
       }
 
       // ── 4. reportes_generados ──────────────────────────────────────────
       this.log('');
-      this.log('⏳ [4/4] Verificando "reportes_generados"...');
+      this.log('⏳ [6/6] Verificando "reportes_generados"...');
       const repCol = await getCol('reportes_generados');
       if (repCol) {
         await patchCol(repCol.id, { viewRule: "" });
@@ -482,7 +638,7 @@ export class AdminAuthModal {
 @Component({
   selector: 'app-configuraciones',
   standalone: true,
-  imports: [CommonModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule, MatChipsModule, ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatProgressBarModule],
+  imports: [CommonModule, RouterModule, MatCardModule, MatButtonModule, MatIconModule, MatChipsModule, ReactiveFormsModule, MatFormFieldModule, MatInputModule, MatProgressBarModule, MatDialogModule],
   template: `
 <div class="page-wrapper fade-in">
   <div class="header-actions">
@@ -602,7 +758,57 @@ export class AdminAuthModal {
       </mat-card-content>
     </mat-card>
 
-    <!-- Card 5: Cierre de Día (Automatismo 23:55) -->
+    <!-- Card 5: Opciones de Formulario -->
+    <mat-card class="settings-card mat-elevation-z3">
+      <mat-card-header>
+        <mat-icon mat-card-avatar color="primary">tune</mat-icon>
+        <mat-card-title>Opciones de Formulario</mat-card-title>
+        <mat-card-subtitle>Configura los Tipos de Trámite y Categorías disponibles</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <!-- Tramites -->
+        <h4 style="margin: 16px 0 8px; color: #0a3d62;">Tipos de Trámite</h4>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <mat-form-field appearance="outline" style="flex: 1;">
+            <mat-label>Nuevo Trámite (ej: ESPECIAL)</mat-label>
+            <input matInput [formControl]="nuevoTramiteCtrl" (keyup.enter)="agregarOpcion('tramites', nuevoTramiteCtrl)" style="text-transform: uppercase;">
+          </mat-form-field>
+          <button mat-flat-button color="primary" (click)="agregarOpcion('tramites', nuevoTramiteCtrl)" [disabled]="!nuevoTramiteCtrl.value" style="height:56px;">
+            <mat-icon>add</mat-icon>
+          </button>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          @for(t of tramiteOpciones(); track t) {
+            <span style="background:#e0f2fe;color:#0284c7;padding:4px 10px;border-radius:12px;font-size:0.8rem;display:flex;align-items:center;gap:4px;">
+              {{t}}
+              <mat-icon style="font-size:14px;cursor:pointer;" (click)="eliminarOpcion('tramites', t)">close</mat-icon>
+            </span>
+          }
+        </div>
+
+        <!-- Categorias -->
+        <h4 style="margin: 16px 0 8px; color: #0a3d62;">Categorías MTC</h4>
+        <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+          <mat-form-field appearance="outline" style="flex: 1;">
+            <mat-label>Nueva Categoría (ej: C-I)</mat-label>
+            <input matInput [formControl]="nuevaCategoriaCtrl" (keyup.enter)="agregarOpcion('categorias', nuevaCategoriaCtrl)">
+          </mat-form-field>
+          <button mat-flat-button color="primary" (click)="agregarOpcion('categorias', nuevaCategoriaCtrl)" [disabled]="!nuevaCategoriaCtrl.value" style="height:56px;">
+            <mat-icon>add</mat-icon>
+          </button>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          @for(c of categoriaOpciones(); track c) {
+            <span style="background:#f0fdf4;color:#15803d;padding:4px 10px;border-radius:12px;font-size:0.8rem;display:flex;align-items:center;gap:4px;">
+              {{c}}
+              <mat-icon style="font-size:14px;cursor:pointer;" (click)="eliminarOpcion('categorias', c)">close</mat-icon>
+            </span>
+          }
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Card 6: Cierre de Día (Automatismo 23:55) -->
     <mat-card class="settings-card mat-elevation-z3 primary-card">
       <mat-card-header>
         <mat-icon mat-card-avatar color="primary">access_time</mat-icon>
@@ -658,13 +864,21 @@ export class ConfiguracionesComponent implements OnInit {
   private expedienteService = inject(ExpedienteService);
 
   processingCierre = signal(false);
-  
+
   sedes = signal<any[]>([]);
   nuevaSedeCtrl = new FormControl('');
   isLoadingSedes = signal(false);
 
+  // Configurable selects
+  tramiteOpciones = signal<string[]>([]);
+  categoriaOpciones = signal<string[]>([]);
+  nuevoTramiteCtrl = new FormControl('');
+  nuevaCategoriaCtrl = new FormControl('');
+  private configIds: Record<string, string> = {};
+
   ngOnInit() {
     this.cargarSedes();
+    this.cargarOpciones();
   }
 
   async cargarSedes() {
@@ -704,6 +918,52 @@ export class ConfiguracionesComponent implements OnInit {
     } catch (e: any) {
       this.snackBar.open('Error al eliminar sede: ' + e.message, 'Cerrar', { duration: 4000 });
       this.isLoadingSedes.set(false);
+    }
+  }
+
+  async cargarOpciones() {
+    try {
+      const recs = await this.pbService.pb.collection('configuracion_sistema').getFullList();
+      for (const r of recs) {
+        this.configIds[r['clave']] = r.id;
+        const vals = JSON.parse(r['valores'] || '[]');
+        if (r['clave'] === 'tramites') this.tramiteOpciones.set(vals);
+        if (r['clave'] === 'categorias') this.categoriaOpciones.set(vals);
+      }
+    } catch (e) { /* colección puede no existir aún */ }
+  }
+
+  async agregarOpcion(clave: 'tramites' | 'categorias', ctrl: FormControl) {
+    const val = ctrl.value?.trim().toUpperCase();
+    if (!val) return;
+    const signal = clave === 'tramites' ? this.tramiteOpciones : this.categoriaOpciones;
+    const current = signal();
+    if (current.includes(val)) { this.snackBar.open('Ya existe ese valor.', '', { duration: 2000 }); return; }
+    const updated = [...current, val];
+    await this.guardarOpcion(clave, updated, signal);
+    ctrl.setValue('');
+  }
+
+  async eliminarOpcion(clave: 'tramites' | 'categorias', val: string) {
+    const signal = clave === 'tramites' ? this.tramiteOpciones : this.categoriaOpciones;
+    const updated = signal().filter(v => v !== val);
+    await this.guardarOpcion(clave, updated, signal);
+  }
+
+  private async guardarOpcion(clave: string, values: string[], sig: any) {
+    try {
+      const id = this.configIds[clave];
+      const payload = { clave, valores: JSON.stringify(values) };
+      if (id) {
+        await this.pbService.pb.collection('configuracion_sistema').update(id, payload);
+      } else {
+        const r = await this.pbService.pb.collection('configuracion_sistema').create(payload);
+        this.configIds[clave] = r.id;
+      }
+      sig.set(values);
+      this.snackBar.open('Guardado correctamente', 'OK', { duration: 2000 });
+    } catch (e: any) {
+      this.snackBar.open('Error al guardar: ' + e.message, 'Cerrar', { duration: 4000 });
     }
   }
 

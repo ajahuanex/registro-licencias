@@ -29,7 +29,7 @@
 
     <mat-nav-list>
       @if (authService.currentUser(); as user) {
-        @if (user?.['perfil'] !== 'ENTREGADOR') {
+        @if (user?.['perfil'] !== 'BLOQUEADO') {
           <a mat-list-item routerLink="/dashboard" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}" [matTooltip]="isCollapsed() ? 'Dashboard' : ''">
             <mat-icon matListItemIcon>dashboard</mat-icon>
             <span matListItemTitle *ngIf="!isCollapsed()">Dashboard</span>
@@ -48,7 +48,7 @@
           </a>
         }
 
-        @if (user?.['perfil'] === 'OTI' || user?.['perfil'] === 'ADMINISTRADOR' || user?.['perfil'] === 'SUPERVISOR') {
+        @if (user?.['perfil'] === 'OTI' || user?.['perfil'] === 'ADMINISTRADOR' || user?.['perfil'] === 'SUPERVISOR' || user?.['perfil'] === 'DIRECTIVO') {
           <a mat-list-item routerLink="/reportes/diario" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Reporte Diario' : ''">
             <mat-icon matListItemIcon>summarize</mat-icon>
             <span matListItemTitle *ngIf="!isCollapsed()">Reporte Diario</span>
@@ -89,6 +89,10 @@
         </div>
       }
     </mat-nav-list>
+
+    <div class="watermark-wrapper" *ngIf="!isCollapsed()">
+      <span class="watermark-text">&copy; 2026 JCAQ</span>
+    </div>
   </mat-sidenav>
 
   <mat-sidenav-content class="app-content-wrapper" [style.margin-left.px]="isHandset() ? 0 : (isCollapsed() ? 70 : 260)">
@@ -131,6 +135,11 @@
           <span>Cambiar Foto</span>
         </button>
         <input type="file" #fileInput hidden accept="image/png, image/jpeg, image/webp" (change)="onFileSelected($event)">
+        
+        <button mat-menu-item (click)="openPasswordModal()">
+          <mat-icon>lock</mat-icon>
+          <span>Cambiar Contraseña</span>
+        </button>
         
         <mat-divider></mat-divider>
         

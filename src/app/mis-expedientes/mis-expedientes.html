@@ -52,7 +52,10 @@
           </button>
         }
 
-        <button mat-raised-button color="primary" (click)="openModal()" [disabled]="userPerfil === 'IMPRESOR' || userPerfil === 'SUPERVISOR'" class="compact-btn">
+        <button mat-raised-button color="primary" (click)="openModal()" 
+                [disabled]="['IMPRESOR', 'SUPERVISOR', 'DIRECTIVO'].includes(userPerfil)" 
+                *ngIf="!['DIRECTIVO'].includes(userPerfil)"
+                class="compact-btn">
           <mat-icon>add_circle</mat-icon> <span class="btn-text">Nuevo</span>
         </button>
       </div>
