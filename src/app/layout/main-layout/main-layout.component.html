@@ -35,7 +35,7 @@
             <span matListItemTitle *ngIf="!isCollapsed()">Dashboard</span>
           </a>
 
-          <a mat-list-item routerLink="/mis-expedientes" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Mis Expedientes' : ''">
+          <a mat-list-item routerLink="/mis-expedientes" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Mis Expedientes' : ''" *ngIf="user?.['perfil'] !== 'ENTREGADOR'">
             <mat-icon matListItemIcon>folder_open</mat-icon>
             <span matListItemTitle *ngIf="!isCollapsed()">Mis Expedientes</span>
           </a>

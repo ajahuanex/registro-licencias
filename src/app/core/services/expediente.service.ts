@@ -44,22 +44,22 @@ export class ExpedienteService {
       }
 
       const payload = {
-        expediente_id:   expedienteId,
-        expediente_dni:  opts?.dniSolicitante || '',
-        operador_id:     model.id || 'unknown',
+        expediente_id: expedienteId,
+        expediente_dni: opts?.dniSolicitante || '',
+        operador_id: model.id || 'unknown',
         operador_nombre: model['nombre'] || model['username'] || 'Desconocido',
         operador_perfil: model['perfil'] || '',
         accion,
         fecha: new Date().toISOString(),
         estado_anterior: opts?.estadoAnterior || '',
-        estado_nuevo:    opts?.estadoNuevo || '',
-        detalles:        detalles?.trim() || 'Log de sistema'
+        estado_nuevo: opts?.estadoNuevo || '',
+        detalles: detalles?.trim() || 'Log de sistema'
       };
-      
+
       console.log("[HISTORY DEBUG] Intentando guardar log:", payload);
       await Promise.all([
-         this.pbService.pb.collection('historial_acciones').create(payload),
-         this.pbService.pb.collection('historial_expedientes').create(payload)
+        this.pbService.pb.collection('historial_acciones').create(payload),
+        this.pbService.pb.collection('historial_expedientes').create(payload)
       ]);
     } catch (e: any) {
       console.error('[HISTORY ERROR] No se pudo guardar el log:', e);
@@ -74,6 +74,7 @@ export class ExpedienteService {
    */
   async registerExpediente(data: ExpedienteCreate): Promise<RecordModel> {
     // 1. Validation Logic: Same name & same day
+    if (!data.fecha_registro) data.fecha_registro = new Date().toISOString();
     const isDuplicate = await this.checkDuplicate(data.apellidos_nombres, data.fecha_registro);
     if (isDuplicate) {
       throw new Error(`El expediente de ${data.apellidos_nombres} ya fue registrado hoy.`);
@@ -81,7 +82,7 @@ export class ExpedienteService {
 
     // 2. Persist to DB
     const record = await this.pbService.pb.collection(this.collectionName).create(data);
-    
+
     // 3. Log History
     await this.logHistory(record.id, 'CREACION', 'Expediente registrado por primera vez.');
     return record;
@@ -95,10 +96,10 @@ export class ExpedienteService {
     if (!nueva?.trim()) return existing || '';
 
     const now = new Date();
-    const dd   = String(now.getDate()).padStart(2, '0');
-    const mm   = String(now.getMonth() + 1).padStart(2, '0');
-    const hh   = String(now.getHours()).padStart(2, '0');
-    const min  = String(now.getMinutes()).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
 
     // Build initials: up to 3 uppercase letters from each word
     const siglas = (userName || 'USR')
@@ -144,14 +145,14 @@ export class ExpedienteService {
 
     // Build a safe payload: start from current values, override with requested changes
     const safePayload: any = {
-      operador:          current['operador']          || '',
-      dni_solicitante:   current['dni_solicitante']   || '00000000',
+      operador: current['operador'] || '',
+      dni_solicitante: current['dni_solicitante'] || '00000000',
       apellidos_nombres: current['apellidos_nombres'] || '',
-      tramite:           current['tramite']           || 'Duplicado',
-      estado:            current['estado']            || 'EN PROCESO',
-      categoria:         current['categoria']         || 'AI',
-      lugar_entrega:     current['lugar_entrega']     || 'Puno',
-      fecha_registro:    current['fecha_registro']    || new Date().toISOString(),
+      tramite: current['tramite'] || 'Duplicado',
+      estado: current['estado'] || 'EN PROCESO',
+      categoria: current['categoria'] || 'AI',
+      lugar_entrega: current['lugar_entrega'] || 'Puno',
+      fecha_registro: current['fecha_registro'] || new Date().toISOString(),
       ...data,
       observaciones: finalObs   // always use the resolved value
     };
@@ -162,7 +163,7 @@ export class ExpedienteService {
     }
 
     const record = await this.pbService.pb.collection(this.collectionName).update(id, safePayload);
-    
+
     const detalles = `Estado: ${safePayload.estado}. Obs: ${finalObs ? finalObs.slice(0, 80) + (finalObs.length > 80 ? '…' : '') : 'Sin obs.'}`;
     await this.logHistory(record.id, accionLog, detalles, { dniSolicitante: safePayload.dni_solicitante });
     return record;
@@ -183,7 +184,7 @@ export class ExpedienteService {
       const date = new Date(isoDateString);
       const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
       const end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-      
+
       const filterStr = `apellidos_nombres = '${apellidosNombres}' && fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
 
       const records = await this.pbService.pb.collection(this.collectionName).getList(1, 1, {
@@ -192,9 +193,9 @@ export class ExpedienteService {
 
       return records.totalItems > 0;
     } catch (error) {
-       console.error('Duplicate Check Error:', error);
-       // Fail closed: assume duplicate if there's an error avoiding multiple insertions.
-       return true; 
+      console.error('Duplicate Check Error:', error);
+      // Fail closed: assume duplicate if there's an error avoiding multiple insertions.
+      return true;
     }
   }
 
@@ -241,21 +242,32 @@ export class ExpedienteService {
    * Retrieves paginated deliveries for a specific location and date range.
    */
   async getFilteredDeliveries(
-    lugar: string, 
-    start: Date, 
-    end: Date, 
-    page: number = 1, 
-    perPage: number = 20
+    lugar: string,
+    start: Date,
+    end: Date,
+    page: number = 1,
+    perPage: number = 20,
+    states: string[] = ['ENTREGADO'],
+    operadorId?: string
   ): Promise<{ items: RecordModel[], totalItems: number }> {
     try {
-      const filterBase = `estado = 'ENTREGADO'`;
-      const filterLugar = (lugar && lugar !== 'TODAS') ? `lugar_entrega = '${lugar}' && ` : ``;
-      // Prioritize filtering by fecha_entrega if possible, or fallback to fecha_registro (less ideal for deliveries)
-      // Custom fields like fecha_entrega work well with filters in Remote PB.
-      const filterStr = `${filterLugar}${filterBase} && (fecha_entrega >= "${this.toPbDate(start)}" && fecha_entrega <= "${this.toPbDate(end)}")`;
+      let filterStr = `(${states.map(s => `estado = '${s}'`).join(' || ')})`;
+      if (lugar && lugar !== 'TODAS') {
+        filterStr = `lugar_entrega = '${lugar}' && ${filterStr}`;
+      }
+      if (operadorId) {
+        filterStr = `operador = '${operadorId}' && ${filterStr}`;
+      }
+      
+      // Use both fecha_entrega (for deliveries) and updated (for other states) as fallback range
+      // This is a bit complex for PB filters, so we'll use a safer combined filter
+      const dateFilter = `(fecha_entrega >= "${this.toPbDate(start)}" && fecha_entrega <= "${this.toPbDate(end)}") || (updated >= "${this.toPbDate(start)}" && updated <= "${this.toPbDate(end)}")`;
+      
+      filterStr = `${filterStr} && (${dateFilter})`;
 
       const result = await this.pbService.pb.collection(this.collectionName).getList(page, perPage, {
-        filter: filterStr
+        filter: filterStr,
+        sort: '-updated' // Most recent actions first
       });
 
       return {
@@ -281,30 +293,30 @@ export class ExpedienteService {
    * Retrieves the daily summary for all operators or a specific one.
    */
   async getDailyConsolidated(dateStringYYYYMMDD: string, operadorId?: string): Promise<RecordModel[]> {
-     try {
-       const [year, month, day] = dateStringYYYYMMDD.split('-').map(Number);
-       const start = new Date(year, month - 1, day, 0, 0, 0, 0);
-       const end = new Date(year, month - 1, day, 23, 59, 59, 999);
+    try {
+      const [year, month, day] = dateStringYYYYMMDD.split('-').map(Number);
+      const start = new Date(year, month - 1, day, 0, 0, 0, 0);
+      const end = new Date(year, month - 1, day, 23, 59, 59, 999);
 
-       let filterStr = `fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
-       if (operadorId) {
-         filterStr += ` && operador = '${operadorId}'`;
-       }
-       const queryOpts = {
-         filter: filterStr,
-         expand: 'operador'
-       };
-       console.log("[EXPEDIENTES DEBUG] Ejecutando getFullList con opciones:", queryOpts);
-       const result = await this.pbService.pb.collection(this.collectionName).getFullList(queryOpts);
-       console.log("[EXPEDIENTES DEBUG] Registros obtenidos:", result.length);
-       return result;
-     } catch(error: any) {
-         console.error("[EXPEDIENTES DEBUG] Failed to load daily report:", error);
-         if (error.response) {
-            console.error("[EXPEDIENTES DEBUG] PocketBase Response JSON:", JSON.stringify(error.response, null, 2));
-         }
-        return [];
-     }
+      let filterStr = `fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
+      if (operadorId) {
+        filterStr += ` && operador = '${operadorId}'`;
+      }
+      const queryOpts = {
+        filter: filterStr,
+        expand: 'operador'
+      };
+      console.log("[EXPEDIENTES DEBUG] Ejecutando getFullList con opciones:", queryOpts);
+      const result = await this.pbService.pb.collection(this.collectionName).getFullList(queryOpts);
+      console.log("[EXPEDIENTES DEBUG] Registros obtenidos:", result.length);
+      return result;
+    } catch (error: any) {
+      console.error("[EXPEDIENTES DEBUG] Failed to load daily report:", error);
+      if (error.response) {
+        console.error("[EXPEDIENTES DEBUG] PocketBase Response JSON:", JSON.stringify(error.response, null, 2));
+      }
+      return [];
+    }
   }
   /**
    * Retrieves records within a date range using fecha_registro.
@@ -313,7 +325,7 @@ export class ExpedienteService {
     try {
       let filter = `fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
       if (filterExtra) filter += ` && (${filterExtra})`;
-      
+
       return await this.pbService.pb.collection(this.collectionName).getFullList({
         filter,
         expand: 'operador'
@@ -344,9 +356,9 @@ export class ExpedienteService {
         filter: `operador_id = '${operadorId}'`
       };
       const logs = await this.pbService.pb.collection('historial_acciones').getFullList(options);
-      
+
       if (logs.length === 0) return [];
-      
+
       // Sort manually using our explicit fecha (Bypass PocketBase index bug on -created)
       logs.sort((a, b) => new Date(b['fecha']).getTime() - new Date(a['fecha']).getTime());
 
@@ -354,15 +366,15 @@ export class ExpedienteService {
       const uniqueLogs = [];
       const seenIds = new Set();
       for (const log of logs) {
-         if (!seenIds.has(log['expediente_id'])) {
-            uniqueLogs.push(log);
-            seenIds.add(log['expediente_id']);
-         }
+        if (!seenIds.has(log['expediente_id'])) {
+          uniqueLogs.push(log);
+          seenIds.add(log['expediente_id']);
+        }
       }
 
       // 2. Obtener IDs únicos de expedientes
       const ids = Array.from(seenIds).filter(id => !!id) as string[];
-      
+
       // 3. Cargar expedientes por bloques (chunks de 40) para no saturar el largo del filtro (error 400)
       const chunkSize = 40;
       let exps: RecordModel[] = [];
@@ -376,7 +388,7 @@ export class ExpedienteService {
 
       // 4. Mapear los datos del expediente al objeto "expand" del log
       const expMap = new Map(exps.map(e => [e.id, e]));
-      
+
       return uniqueLogs.map(log => {
         const exp = expMap.get(log['expediente_id']);
         if (exp) {
@@ -386,10 +398,10 @@ export class ExpedienteService {
       }).filter(log => {
         const estadoActual = (log as any).expand?.expediente_id?.estado || '';
         const logPerfil = (log as any).operador_perfil || '';
-        
+
         // If an Impresor reverted an item back to EN PROCESO, hide it
         if (logPerfil === 'IMPRESOR' && estadoActual === 'EN PROCESO') return false;
-        
+
         // If a Supervisor reverted an item back to IMPRESO (or it went all the way to EN PROCESO), hide it
         if (logPerfil === 'SUPERVISOR' && (estadoActual === 'IMPRESO' || estadoActual === 'EN PROCESO')) return false;
 

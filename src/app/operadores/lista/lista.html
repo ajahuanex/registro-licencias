@@ -52,7 +52,8 @@
                     [class.admin]="element.perfil === 'ADMINISTRADOR'"
                     [class.sup]="element.perfil === 'SUPERVISOR'"
                     [class.reg]="element.perfil === 'REGISTRADOR'"
-                    [class.ent]="element.perfil === 'ENTREGADOR'">
+                    [class.ent]="element.perfil === 'ENTREGADOR'"
+                    [class.blocked]="element.perfil?.startsWith('[BLOQUEADO]')">
                 {{element.perfil || 'N/A'}}
               </span>
             </td>
@@ -79,12 +80,35 @@
             <td mat-cell *matCellDef="let element"> {{element.email}} </td>
           </ng-container>
 
+          <!-- Última Conexión -->
+          <ng-container matColumnDef="conexion">
+            <th mat-header-cell *matHeaderCellDef> Última Conexión </th>
+            <td mat-cell *matCellDef="let element" style="max-width: 250px;">
+               @if (element.ultima_ip) {
+                 <div style="line-height: 1.2;">
+                   <strong>{{ element.ultima_ip }}</strong><br>
+                   <span style="color: #64748b; font-size: 0.75rem;" [title]="element.ultimo_equipo || ''">
+                     {{ (element.ultimo_equipo | slice:0:35) || 'N/A' }}{{(element.ultimo_equipo?.length > 35) ? '...' : ''}}
+                   </span>
+                 </div>
+               } @else {
+                 <span style="color: #94a3b8; font-style: italic;">Sin registro reciente</span>
+               }
+            </td>
+          </ng-container>
+
           <!-- Actions Column -->
           <ng-container matColumnDef="acciones">
             <th mat-header-cell *matHeaderCellDef class="text-right"> Acciones </th>
             <td mat-cell *matCellDef="let element" class="text-right">
               @if (isOti()) {
-                <button mat-icon-button color="accent" matTooltip="Actuar como {{element.nombre}}" (click)="actAs(element)" [disabled]="isCurrentUser(element.id)">
+                <button mat-icon-button color="accent" matTooltip="Ver Historial (IPs)" (click)="openHistory(element)">
+                  <mat-icon>history</mat-icon>
+                </button>
+                <button mat-icon-button color="primary" matTooltip="Bloquear / Desbloquear" (click)="toggleBlock(element)" [disabled]="isCurrentUser(element.id)">
+                  <mat-icon>{{ element.perfil === 'BLOQUEADO' ? 'lock_open' : 'lock' }}</mat-icon>
+                </button>
+                <button mat-icon-button style="color: #0ea5e9;" matTooltip="Actuar como {{element.nombre}}" (click)="actAs(element)" [disabled]="isCurrentUser(element.id) || element.perfil === 'BLOQUEADO'">
                   <mat-icon>visibility</mat-icon>
                 </button>
               }
@@ -97,8 +121,8 @@
             </td>
           </ng-container>
 
-          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
-          <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="table-row-hover"></tr>
+          <tr mat-header-row *matHeaderRowDef="displayedColumns()"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns();" class="table-row-hover"></tr>
 
           <tr class="mat-row" *matNoDataRow>
             <td class="mat-cell empty-cell" [attr.colspan]="4">

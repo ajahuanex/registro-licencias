@@ -11,11 +11,76 @@ import { MatTableModule } from '@angular/material/table';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog, MatDialogModule, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { Inject } from '@angular/core';
+import { PocketbaseService } from '../../core/services/pocketbase.service';
+
+@Component({
+  selector: 'app-historial-dialog',
+  standalone: true,
+  imports: [CommonModule, MatDialogModule, MatButtonModule, MatIconModule, MatTableModule],
+  template: `
+    <h2 mat-dialog-title>Historial de Accesos (IP y Equipo)</h2>
+    <mat-dialog-content>
+      @if (loading()) {
+        <p style="padding: 1rem 0;">Cargando registros...</p>
+      } @else if (historial().length === 0) {
+        <p style="padding: 1rem 0;">No hay accesos registrados de este operador.</p>
+      } @else {
+        <table class="full-width-table" style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:8px; border-bottom: 1px solid #e2e8f0;">Fecha y Hora</th>
+              <th style="text-align:left; padding:8px; border-bottom: 1px solid #e2e8f0;">IP Pública</th>
+              <th style="text-align:left; padding:8px; border-bottom: 1px solid #e2e8f0;">Navegador/Equipo</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (log of historial(); track log.id) {
+              <tr>
+                <td style="padding:8px; border-bottom: 1px solid #f1f5f9;">{{ log.created | date:'short' }}</td>
+                <td style="padding:8px; border-bottom: 1px solid #f1f5f9;"><strong>{{ log.ip_publica || 'Desconocida' }}</strong></td>
+                <td style="padding:8px; border-bottom: 1px solid #f1f5f9; font-size: 0.85em; color: #64748b; max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" [title]="log.user_agent">
+                  {{ log.user_agent || 'N/A' }}
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </mat-dialog-content>
+    <mat-dialog-actions align="end">
+      <button mat-button mat-dialog-close>Cerrar</button>
+    </mat-dialog-actions>
+  `
+})
+export class HistorialOperadorDialog implements OnInit {
+  private pbService = inject(PocketbaseService);
+  private snackBar = inject(MatSnackBar);
+  historial = signal<any[]>([]);
+  loading = signal<boolean>(true);
+
+  constructor(@Inject(MAT_DIALOG_DATA) public data: { operadorId: string, nombre: string }) {}
+
+  async ngOnInit() {
+    try {
+      const records = await this.pbService.pb.collection('historial_acciones').getList(1, 20, {
+        filter: `operador_id = '${this.data.operadorId}' && accion = 'LOGIN'`,
+        sort: '-created'
+      });
+      this.historial.set(records.items);
+    } catch (e: any) {
+      console.warn("No se pudo cargar historial (puede que la tabla aún no exista):", e.message);
+      this.snackBar.open("No se pudieron cargar registros o la característica es muy nueva.", "Cerrar", { duration: 3000 });
+    } finally {
+      this.loading.set(false);
+    }
+  }
+}
 
 @Component({
   selector: 'app-lista',
@@ -66,14 +131,21 @@ export class Lista implements OnInit {
   });
   
   isLoading = signal<boolean>(true);
-  
-  displayedColumns: string[] = ['dni', 'nombre', 'perfil', 'sede', 'email', 'acciones'];
 
   isOti = computed(() => {
     const user = this.authService.currentUser();
     const p = user?.['perfil'];
     return p === 'OTI' || p === 'ADMINISTRADOR';
   });
+
+  displayedColumns = computed(() => {
+    if (this.isOti()) {
+      return ['dni', 'nombre', 'perfil', 'sede', 'email', 'conexion', 'acciones'];
+    }
+    return ['dni', 'nombre', 'perfil', 'sede', 'email', 'acciones'];
+  });
+
+
 
   isCurrentUser(id: string) {
     return this.authService.currentUser()?.id === id;
@@ -150,6 +222,12 @@ export class Lista implements OnInit {
   }
 
   openModal(operador?: RecordModel) {
+    // Prevent editing of blocked operators directly unless unblocked first
+    if (operador && operador['perfil']?.startsWith('[BLOQUEADO]')) {
+       this.snackBar.open('Desbloquee al operador primero para editar sus detalles.', 'Cerrar', { duration: 4000 });
+       return;
+    }
+
     const dialogRef = this.dialog.open(ModalOperador, {
       width: '500px',
       data: operador ? { ...operador } : null,
@@ -161,6 +239,36 @@ export class Lista implements OnInit {
         this.loadData(); // Reload list if changes were saved
       }
     });
+  }
+
+  // OTI Security Mechanisms
+  openHistory(operador: RecordModel) {
+     this.dialog.open(HistorialOperadorDialog, {
+       width: '650px',
+       maxWidth: '95vw',
+       data: { operadorId: operador.id, nombre: operador['nombre'] }
+     });
+  }
+
+  async toggleBlock(operador: RecordModel) {
+     this.isLoading.set(true);
+     try {
+        let currentPerfil = operador['perfil'] || '';
+        if (currentPerfil.startsWith('[BLOQUEADO]')) {
+           currentPerfil = currentPerfil.replace('[BLOQUEADO] ', '').trim();
+           if (currentPerfil === '') currentPerfil = 'REGISTRADOR'; // fallback general
+        } else {
+           currentPerfil = '[BLOQUEADO] ' + currentPerfil;
+        }
+
+        await this.operadorService.updateOperador(operador.id, { perfil: currentPerfil });
+        this.snackBar.open(currentPerfil.includes('BLOQUEADO') ? 'Operador bloqueado (No podrá acceder)' : 'Operador desbloqueado', 'Cerrar', { duration: 3000 });
+        await this.loadData();
+     } catch (e: any) {
+        this.snackBar.open('Error al modificar estado: ' + e.message, 'Err', { duration: 3000 });
+     } finally {
+        this.isLoading.set(false);
+     }
   }
 
   async deleteOperador(id: string) {

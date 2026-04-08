@@ -101,6 +101,20 @@
   border-radius: 12px;
   font-size: 0.8rem;
   font-weight: 600;
+
+  &.oti { background: #fee2e2; color: #dc2626; }
+  &.admin { background: #fef3c7; color: #d97706; }
+  &.sup { background: #e0e7ff; color: #4f46e5; }
+  &.reg { background: #dcfce7; color: #16a34a; }
+  &.ent { background: #f3e8ff; color: #9333ea; }
+  
+  &.blocked { 
+    background: #1e293b; 
+    color: #f8fafc; 
+    text-decoration: line-through; 
+    text-decoration-thickness: 1px;
+    text-decoration-color: rgba(255,255,255,0.4);
+  }
 }
 
 .empty-cell {

@@ -10,11 +10,37 @@
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow-x: hidden;
 
+  /* Force flex column inside mat-sidenav to push watermark to bottom */
+  ::ng-deep .mat-drawer-inner-container {
+    display: flex;
+    flex-direction: column;
+  }
+
+  mat-nav-list {
+    flex-grow: 1;
+  }
+
   &.collapsed {
     width: 70px;
     .sidenav-header { padding: 1.5rem 0.5rem; justify-content: center; }
     mat-nav-list a[mat-list-item] { padding: 0 20px; justify-content: center; }
   }
+}
+
+.watermark-wrapper {
+  margin-top: auto;
+  padding: 1rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.watermark-text {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-secondary);
+  opacity: 0.35;
+  user-select: none;
 }
 
 .sidenav-header {

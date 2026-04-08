@@ -13,8 +13,15 @@
 .summary-card.total .card-icon { background: rgba(255,255,255,.2); color: #fff; }
 .summary-card.total .value, .summary-card.total .label { color: #fff; }
 .card-icon { width: 45px; height: 45px; border-radius: 10px; background: var(--app-bg); display: flex; align-items: center; justify-content: center; color: var(--header-color); }
+.card-data {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem; /* El "salto" o espacio entre número y descripción */
+  flex-wrap: wrap;
+}
 .card-data .value { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); line-height: 1; }
-.card-data .label { font-size: .7rem; font-weight: 600; color: var(--text-secondary); margin-top: 4px; }
+.card-data .label { font-size: .7rem; font-weight: 600; color: var(--text-secondary); }
+.card-data .pct { font-size: .75rem; font-weight: 600; color: var(--text-secondary); opacity: 0.8; }
 .section-header h3 { display: flex; align-items: center; gap: .5rem; font-weight: 700; color: var(--text-primary); }
 .section-header mat-icon { color: var(--header-color); }
 .chart-card { background: var(--surface); border-radius: 12px; border: 1px solid var(--border-color); padding: 1rem; box-shadow: var(--shadow-sm); }

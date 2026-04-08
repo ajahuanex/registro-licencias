@@ -98,7 +98,7 @@ export class EntregasComponent implements OnInit, OnDestroy {
   });
 
   displayedColumns: string[] = ['dni_solicitante', 'apellidos_nombres', 'tramite', 'categoria', 'fecha', 'acciones'];
-  deliveredColumns: string[] = ['num', 'dni_solicitante', 'apellidos_nombres', 'tramite', 'categoria', 'fecha_entrega', 'acciones'];
+  deliveredColumns: string[] = ['num', 'dni_solicitante', 'apellidos_nombres', 'tramite', 'categoria', 'estado', 'fecha_accion', 'acciones'];
 
   private datePipe = inject(DatePipe);
 
@@ -168,13 +168,14 @@ export class EntregasComponent implements OnInit, OnDestroy {
       // 2. Calcular rango de fechas para ENTREGADOS
       const { start, end } = this.getDateRange(this.selectedRange());
 
-      // 3. Cargar ENTREGADOS con Filtro y Paginación
+      // 3. Cargar ACTIVIDAD (Entregados y Observados) con Filtro y Paginación
       const result = await this.expedienteService.getFilteredDeliveries(
         this.selectedLugar(),
         start,
         end,
         this.deliveredPage(),
-        this.deliveredPageSize()
+        this.deliveredPageSize(),
+        ['ENTREGADO', 'OBSERVADO']
       );
 
       this.deliveredRecords.set(result.items);
@@ -272,25 +273,29 @@ export class EntregasComponent implements OnInit, OnDestroy {
     }
   }
 
-  async revertirEntrega(id: string) {
+  async revertirAccion(id: string, estadoActual: string) {
     if (!this.canDeliver()) {
-      alert('Acceso Denegado: No tiene permisos para revertir entregas en esta Sede.');
+      alert('Acceso Denegado: No tiene permisos para revertir acciones en esta Sede.');
       return;
     }
 
-    if (!confirm('¿Revertir Entrega?\n\n¿Estás seguro de revertir la entrega? El expediente volverá a PENDIENTES.')) return;
+    const msg = estadoActual === 'ENTREGADO' 
+      ? '¿Revertir Entrega?\n\nEl expediente volverá a PENDIENTES.'
+      : '¿Revertir Observación?\n\nEl expediente volverá a PENDIENTES.';
+
+    if (!confirm(msg)) return;
 
     this.isLoading.set(true);
     try {
       await this.expedienteService.updateExpediente(
         id,
         { estado: 'VERIFICADO' },
-        'REVERSION_ENTREGA'
+        estadoActual === 'ENTREGADO' ? 'REVERSION_ENTREGA' : 'REVERSION_OBSERVACION'
       );
-      this.snackBar.open('Entrega revertida correctamente, regresó a Pendientes', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
+      this.snackBar.open('Acción revertida correctamente, regresó a Pendientes', 'Cerrar', { duration: 3000, panelClass: ['success-snackbar'] });
       await this.loadData();
     } catch (error: any) {
-      console.error('Error revirtiendo entrega', error);
+      console.error('Error revirtiendo accion', error);
       this.snackBar.open('Error al revertir: ' + error.message, 'Cerrar', { duration: 3000, panelClass: ['error-snackbar'] });
       this.isLoading.set(false);
     }

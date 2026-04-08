@@ -71,6 +71,13 @@ export class AuthService {
       this.originalAuth.set(null);
 
       const authData = await this.pbService.pb.collection('operadores').authWithPassword(dni, password);
+      
+      const perfilActual = authData.record['perfil'] || '';
+      if (perfilActual === 'BLOQUEADO' || perfilActual.startsWith('[BLOQUEADO]')) {
+         this.pbService.pb.authStore.clear();
+         throw new Error('Su cuenta ha sido suspendida/bloqueada. Contacte a la Oficina de Tecnologías (OTI).');
+      }
+
       console.log("[AUTH] Login exitoso para:", authData.record['nombre']);
 
       // --- REGISTRO DE AUDITORÍA (IP y Navegador) ---
@@ -79,6 +86,13 @@ export class AuthService {
         const { ip } = await ipRes.json();
         const userAgent = window.navigator.userAgent;
 
+        // Save directly to the operator record for fast table rendering
+        await this.pbService.pb.collection('operadores').update(authData.record.id, {
+           ultima_ip: ip,
+           ultimo_equipo: userAgent
+        });
+
+        // Optional log table
         await this.pbService.pb.collection('historial_acciones').create({
           operador_id: authData.record.id,
           accion: 'LOGIN',
