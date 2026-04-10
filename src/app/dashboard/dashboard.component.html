@@ -1,15 +1,21 @@
-<div class="report-wrapper dashboard-page fade-in">
+<div class="report-wrapper fade-in">
   
-  <header class="dashboard-header mat-elevation-z2">
-    <div class="header-titles">
-      <h1>Panel de Control</h1>
-      <p class="subtitle">Análisis avanzado de gestión operativa</p>
-    </div>
-    <div class="header-actions">
-      <button mat-flat-button color="primary" (click)="loadAllStats()" [disabled]="isLoading()">
-        <mat-icon [class.rolling]="isLoading()">refresh</mat-icon>
-        Actualizar Datos
-      </button>
+  <header class="report-header mat-elevation-z1">
+    <div class="header-main">
+      <div class="title-section">
+        <mat-icon class="title-icon">dashboard_customize</mat-icon>
+        <div>
+          <h1>Panel de Control Operativo</h1>
+          <p class="subtitle">Visión estratégica de trámites y expedientes en tiempo real</p>
+        </div>
+      </div>
+      
+      <div class="header-actions">
+        <button mat-flat-button color="primary" (click)="loadAllStats()" [disabled]="isLoading()" class="refresh-btn">
+          <mat-icon [class.rolling]="isLoading()">sync</mat-icon>
+          ACTUALIZAR DATOS
+        </button>
+      </div>
     </div>
   </header>
 
@@ -23,17 +29,11 @@
     <!-- OPERATOR VIEW CALLOUT -->
     @if (authService.currentUser()?.['perfil'] !== 'ADMINISTRADOR' && authService.currentUser()?.['perfil'] !== 'OTI') {
       <div class="operator-callout">
-        <div class="progress-card mat-elevation-z3">
-          <div class="progress-info">
-            <div class="icon-circle"><mat-icon>trending_up</mat-icon></div>
-            <div class="text">
-              <h2>Mi Avance Anual</h2>
-              <p>Has procesado <strong>{{ stats().myAnnualProgress }}</strong> expedientes este año</p>
-            </div>
-          </div>
-          <div class="progress-visual">
-            <span class="count">{{ stats().myAnnualProgress }}</span>
-            <span class="label">Acciones</span>
+        <div class="summary-card total mat-elevation-z3">
+          <div class="card-icon"><mat-icon>trending_up</mat-icon></div>
+          <div class="card-data">
+            <span class="value">{{ stats().myAnnualProgress }}</span>
+            <span class="label">MI PRODUCCIÓN ANUAL</span>
           </div>
         </div>
       </div>
@@ -41,128 +41,137 @@
 
     <!-- MULTI-PERIOD TABS -->
     <mat-tab-group (selectedTabChange)="onTabChange($event)" class="stats-tabs mat-elevation-z1">
-      <mat-tab label="Hoy (Diario)">
-        <div class="tab-content">
-          <p class="period-info">Producción de hoy ({{ currentDate | date:'dd/MM/yyyy' }})</p>
-          <ng-container *ngTemplateOutlet="statsLayout; context: { $implicit: stats().daily }"></ng-container>
-        </div>
-      </mat-tab>
-      <mat-tab label="Este Mes">
-        <div class="tab-content">
-          <p class="period-info">Acumulado mensual ({{ currentDate | date:'MMMM yyyy' }})</p>
-          <ng-container *ngTemplateOutlet="statsLayout; context: { $implicit: stats().monthly }"></ng-container>
-        </div>
-      </mat-tab>
-      <mat-tab label="Consolidado Anual">
-        <div class="tab-content">
-          <p class="period-info">Histórico del año {{ currentDate | date:'yyyy' }}</p>
-          <ng-container *ngTemplateOutlet="statsLayout; context: { $implicit: stats().annual }"></ng-container>
-        </div>
-      </mat-tab>
+      <mat-tab label="Hoy (Diario)"></mat-tab>
+      <mat-tab label="Este Mes"></mat-tab>
+      <mat-tab label="Acumulado Anual"></mat-tab>
     </mat-tab-group>
 
-    <!-- ANALYTICAL GRID (Admins/OTI) -->
-    @if (authService.currentUser()?.['perfil'] === 'ADMINISTRADOR' || authService.currentUser()?.['perfil'] === 'OTI') {
-      <div class="visual-analytics-section fade-in">
-        <div class="section-header">
-          <h3><mat-icon>analytics</mat-icon> Análisis Estadístico Visual ({{ activeTab() | uppercase }})</h3>
+    <div class="period-info">
+      <mat-icon>calendar_today</mat-icon>
+      @if (activeTab() === 'daily') { Datos de hoy: {{ currentDate | date:'dd/MM/yyyy' }} }
+      @else if (activeTab() === 'monthly') { Acumulado mensual: {{ currentDate | date:'MMMM yyyy' }} }
+      @else { Histórico del año {{ currentDate | date:'yyyy' }} }
+    </div>
+
+    <!-- Summary Row -->
+    <div class="summary-cards">
+      <div class="summary-card total mat-elevation-z2">
+        <div class="card-icon"><mat-icon>folder_special</mat-icon></div>
+        <div class="card-data">
+          <span class="value">{{ stats()[activeTab()].total }}</span>
+          <span class="label">TOTAL EXPEDIENTES</span>
         </div>
-        
-        <div class="charts-grid">
-          <mat-card class="chart-card">
-            <mat-card-header><mat-card-title>Carga de Estados</mat-card-title></mat-card-header>
-            <mat-card-content><div class="chart-container"><canvas #statesChart></canvas></div></mat-card-content>
-          </mat-card>
-
-          <mat-card class="chart-card">
-            <mat-card-header><mat-card-title>Tipos de Trámite</mat-card-title></mat-card-header>
-            <mat-card-content><div class="chart-container"><canvas #tramitesChart></canvas></div></mat-card-content>
-          </mat-card>
-
-          <mat-card class="chart-card">
-            <mat-card-header><mat-card-title>Distribución Sedes</mat-card-title></mat-card-header>
-            <mat-card-content><div class="chart-container"><canvas #sedesChart></canvas></div></mat-card-content>
-          </mat-card>
-
-          <mat-card class="chart-card">
-            <mat-card-header><mat-card-title>Top Operadores</mat-card-title></mat-card-header>
-            <mat-card-content><div class="chart-container"><canvas #operadorChart></canvas></div></mat-card-content>
-          </mat-card>
+      </div>
+      
+      <div class="summary-card mat-elevation-z1 border-card">
+        <div class="card-icon"><mat-icon>add_card</mat-icon></div>
+        <div class="card-data">
+          <span class="value">{{ stats()[activeTab()].obtencion }}</span>
+          <span class="label">OBTENCIÓN</span>
+          <span class="percentage">{{ pct(stats()[activeTab()].obtencion, stats()[activeTab()].total) }}%</span>
         </div>
+      </div>
 
-        <mat-card class="matrix-card">
-          <div class="matrix-header">
-            <h3><mat-icon>grid_view</mat-icon> Resumen Cruzado: Trámite × Estado</h3>
+      <div class="summary-card mat-elevation-z1 border-card">
+        <div class="card-icon"><mat-icon>autorenew</mat-icon></div>
+        <div class="card-data">
+          <span class="value">{{ stats()[activeTab()].revalidaciones }}</span>
+          <span class="label">REVALIDACIÓN</span>
+          <span class="percentage">{{ pct(stats()[activeTab()].revalidaciones, stats()[activeTab()].total) }}%</span>
+        </div>
+      </div>
+
+      <div class="summary-card mat-elevation-z1 border-card">
+        <div class="card-icon"><mat-icon>upgrade</mat-icon></div>
+        <div class="card-data">
+          <span class="value">{{ stats()[activeTab()].recategorizacion }}</span>
+          <span class="label">RECAT.</span>
+          <span class="percentage">{{ pct(stats()[activeTab()].recategorizacion, stats()[activeTab()].total) }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="dashboard-grid fade-in">
+      <!-- Row 1 -->
+      <div class="grid-row">
+        <mat-card class="chart-card mat-elevation-z1 main-chart">
+          <div class="chart-header">
+            <h3><mat-icon>bar_chart</mat-icon> Distribución de Trámites</h3>
           </div>
-          <div class="table-container">
-            <table class="premium-table">
-              <thead>
-                <tr>
-                  <th>Trámite</th>
-                  @for(e of estadoKeys; track e) { <th>{{e}}</th> }
-                  <th class="total-col">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for(row of stats()[activeTab()].matrix; track row.tramite) {
-                  <tr>
-                    <td class="row-label">{{row.tramite}}</td>
-                    @for(e of estadoKeys; track e) { 
-                      <td [class.zero]="(row.estados[e]||0) === 0">{{ row.estados[e] || 0 }}</td> 
-                    }
-                    <td class="total-col">{{row.total}}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
+          <mat-card-content>
+            <div class="canvas-wrapper">
+              <canvas #tramitesChart></canvas>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="chart-card mat-elevation-z1">
+          <div class="chart-header">
+            <h3><mat-icon>donut_large</mat-icon> Carga por Estados</h3>
           </div>
+          <mat-card-content>
+            <div class="canvas-wrapper donut">
+              <canvas #statesChart></canvas>
+            </div>
+          </mat-card-content>
         </mat-card>
       </div>
-    }
+
+      <!-- Row 2 -->
+      <div class="grid-row inverted">
+        <mat-card class="chart-card mat-elevation-z1">
+          <div class="chart-header">
+            <h3><mat-icon>share</mat-icon> Por Sede</h3>
+          </div>
+          <mat-card-content>
+            <div class="canvas-wrapper donut">
+              <canvas #sedesChart></canvas>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card class="chart-card mat-elevation-z1 main-chart">
+          <div class="chart-header">
+            <h3><mat-icon>groups</mat-icon> Top Productividad Operadores</h3>
+          </div>
+          <mat-card-content>
+            <div class="canvas-wrapper">
+              <canvas #operadorChart></canvas>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+
+      <!-- Matrix Table -->
+      <mat-card class="matrix-card mat-elevation-z1">
+        <div class="chart-header">
+          <h3><mat-icon>grid_view</mat-icon> Resumen Cruzado: Trámite × Estado</h3>
+        </div>
+        <div class="table-container">
+          <table class="premium-table">
+            <thead>
+              <tr>
+                <th>Trámite</th>
+                @for(e of estadoKeys; track e) { <th>{{e}}</th> }
+                <th class="total-col">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for(row of stats()[activeTab()].matrix; track row.tramite) {
+                <tr>
+                  <td class="row-label">{{row.tramite}}</td>
+                  @for(e of estadoKeys; track e) { 
+                    <td [class.zero]="(row.estados[e]||0) === 0">
+                      {{ row.estados[e] || 0 }}
+                    </td> 
+                  }
+                  <td class="total-col">{{row.total}}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </mat-card>
+    </div>
   }
 </div>
-
-<!-- REUSABLE STATS TEMPLATE -->
-<ng-template #statsLayout let-data>
-  <div class="summary-cards">
-    <div class="summary-card total">
-      <div class="card-icon"><mat-icon>folder_open</mat-icon></div>
-      <div class="card-data">
-        <span class="value">{{ data.total }}</span>
-        <span class="label">EXPEDIENTES</span>
-      </div>
-    </div>
-    <div class="summary-card">
-      <div class="card-icon"><mat-icon>add_card</mat-icon></div>
-      <div class="card-data">
-        <span class="value">{{ data.obtencion }}</span>
-        <span class="label">OBTENCIÓN</span>
-        <span class="pct">{{ (data.obtencion/data.total*100)||0 | number:'1.0-0' }}%</span>
-      </div>
-    </div>
-    <div class="summary-card">
-      <div class="card-icon"><mat-icon>autorenew</mat-icon></div>
-      <div class="card-data">
-        <span class="value">{{ data.revalidaciones }}</span>
-        <span class="label">REVALIDACIÓN</span>
-        <span class="pct">{{ (data.revalidaciones/data.total*100)||0 | number:'1.0-0' }}%</span>
-      </div>
-    </div>
-    <div class="summary-card">
-      <div class="card-icon"><mat-icon>upgrade</mat-icon></div>
-      <div class="card-data">
-        <span class="value">{{ data.recategorizacion }}</span>
-        <span class="label">RECAT.</span>
-        <span class="pct">{{ (data.recategorizacion/data.total*100)||0 | number:'1.0-0' }}%</span>
-      </div>
-    </div>
-    <div class="summary-card">
-      <div class="card-icon"><mat-icon>content_copy</mat-icon></div>
-      <div class="card-data">
-        <span class="value">{{ data.duplicados }}</span>
-        <span class="label">DUPLICADO</span>
-        <span class="pct">{{ (data.duplicados/data.total*100)||0 | number:'1.0-0' }}%</span>
-      </div>
-    </div>
-  </div>
-</ng-template>

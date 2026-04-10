@@ -14,6 +14,10 @@ export class AuthService {
   public originalAuth = signal<{token: string, model: RecordModel} | null>(null);
   public isImpersonating = computed(() => this.originalAuth() !== null);
   
+  // Session tracking
+  public clientIp = signal<string>('');
+  public userAgent = signal<string>(typeof window !== 'undefined' ? window.navigator.userAgent : '');
+  
   // Computed signal to determine if user is authenticated
   public isLoggedIn = computed(() => this.currentUser() !== null);
 
@@ -59,6 +63,20 @@ export class AuthService {
         this.currentUser.set(model);
       }
     });
+
+    // Initialize session data
+    this.initSessionData();
+  }
+
+  private async initSessionData() {
+    if (typeof window === 'undefined') return;
+    try {
+      const res = await fetch('https://api.ipify.org?format=json');
+      const { ip } = await res.json();
+      this.clientIp.set(ip);
+    } catch (e) {
+      console.warn('[AUTH] No se pudo obtener la IP pública:', e);
+    }
   }
 
   async login(dni: string, password: string): Promise<boolean> {
@@ -97,9 +115,10 @@ export class AuthService {
           operador_id: authData.record.id,
           accion: 'LOGIN',
           detalles: `Inicio de sesión exitoso (DNI: ${dni})`,
-          ip_publica: ip,
-          user_agent: userAgent
+          ip_publica: this.clientIp() || ip,
+          user_agent: this.userAgent()
         });
+        if (ip) this.clientIp.set(ip);
       } catch (logErr) {
         console.warn('[AUTH] No se pudo registrar la auditoría de IP:', logErr);
       }

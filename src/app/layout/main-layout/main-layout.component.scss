@@ -43,6 +43,32 @@
   user-select: none;
 }
 
+.session-info {
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: auto;
+  user-select: text;
+
+  span {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    opacity: 0.6;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ip-text {
+    font-family: monospace;
+    font-weight: 700;
+    color: var(--header-color);
+    opacity: 0.8;
+  }
+}
+
 .sidenav-header {
   padding: 1.5rem 1rem;
   display: flex;

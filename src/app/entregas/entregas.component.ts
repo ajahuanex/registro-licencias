@@ -309,6 +309,7 @@ export class EntregasComponent implements OnInit, OnDestroy {
       'Apellidos y Nombres': r['apellidos_nombres'],
       'Trámite': r['tramite'],
       'Categoría': r['categoria'],
+      'Estado': r['estado'],
       'Fecha Entrega': this.datePipe.transform(r['fecha_entrega'] || r['updated'] || r['created'], 'dd/MM/yyyy HH:mm') || '--'
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -385,21 +386,40 @@ export class EntregasComponent implements OnInit, OnDestroy {
       doc.setTextColor(0);
     }
 
-    const body = this.filteredDeliveredRecords().map((r, i) => [
-      i + 1, 
-      r['dni_solicitante'] || 'N/A',
-      r['apellidos_nombres'], 
-      r['tramite'], 
-      r['categoria'],
-      this.datePipe.transform(r['fecha_entrega'] || r['updated'] || r['created'], 'dd/MM/yyyy HH:mm') || '--'
-    ]);
+    // Group by Category
+    const grouped = this.filteredDeliveredRecords().reduce((acc: any, r) => {
+      const cat = r['categoria'] || 'SIN CATEGORÍA';
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(r);
+      return acc;
+    }, {});
+
+    const sortedCats = Object.keys(grouped).sort();
+    const finalBody: any[] = [];
+
+    sortedCats.forEach(cat => {
+      // Header for Category
+      finalBody.push([{ content: `CATEGORÍA: ${cat}`, colSpan: 7, styles: { fillColor: [230, 230, 230], fontStyle: 'bold', halign: 'center' } }]);
+      
+      grouped[cat].forEach((r: any, i: number) => {
+        finalBody.push([
+          i + 1,
+          r['dni_solicitante'] || 'N/A',
+          r['apellidos_nombres'],
+          r['tramite'],
+          r['categoria'],
+          r['estado'],
+          this.datePipe.transform(r['fecha_entrega'] || r['updated'] || r['created'], 'dd/MM/yyyy HH:mm') || '--'
+        ]);
+      });
+    });
 
     autoTable(doc, {
       startY: 40,
-      head: [['N°', 'DNI Solicitante', 'Apellidos y Nombres', 'Trámite', 'Categoría', 'Fecha Entrega']],
-      body: body,
+      head: [['N°', 'DNI Solicitante', 'Apellidos y Nombres', 'Trámite', 'Categoría', 'Estado', 'Fecha']],
+      body: finalBody,
       headStyles: { fillColor: [10, 61, 98] },
-      styles: { fontSize: 9 },
+      styles: { fontSize: 8 },
       alternateRowStyles: { fillColor: [244, 247, 246] }
     });
 

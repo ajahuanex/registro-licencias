@@ -108,10 +108,25 @@ export class DashboardComponent implements OnInit {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
     const yearStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
     
+    const isAdmin = user?.['perfil'] === 'ADMINISTRADOR' || user?.['perfil'] === 'OTI';
+    
+    let dailyPromise, monthlyPromise, annualPromise;
+    
+    if (isAdmin) {
+      dailyPromise = this.expedienteService.getByDateRange(todayStart, todayEnd);
+      monthlyPromise = this.expedienteService.getByDateRange(monthStart, todayEnd);
+      annualPromise = this.expedienteService.getByDateRange(yearStart, todayEnd);
+    } else {
+      // Personal Dashboard for Registrador, Impresor, Supervisor, Entregador
+      dailyPromise = this.expedienteService.getByOperatorInterventionsRange(user!.id, todayStart, todayEnd);
+      monthlyPromise = this.expedienteService.getByOperatorInterventionsRange(user!.id, monthStart, todayEnd);
+      annualPromise = this.expedienteService.getByOperatorInterventionsRange(user!.id, yearStart, todayEnd);
+    }
+
     const [daily, monthly, annual, myProgress] = await Promise.all([
-      this.expedienteService.getByDateRange(todayStart, todayEnd),
-      this.expedienteService.getByDateRange(monthStart, todayEnd),
-      this.expedienteService.getByDateRange(yearStart, todayEnd),
+      dailyPromise,
+      monthlyPromise,
+      annualPromise,
       this.expedienteService.getMyActionsCount(user!.id, yearStart, todayEnd)
     ]);
 
@@ -149,13 +164,15 @@ export class DashboardComponent implements OnInit {
       if (estado === 'ATENDIDO') s.atendidos++;
       if (estado === 'OBSERVADO') s.observados++;
 
-      if (tramite === 'Obtención') s.obtencion++;
-      if (tramite === 'Revalidación') s.revalidaciones++;
-      if (tramite === 'Recategorización') s.recategorizacion++;
-      if (tramite === 'Duplicado') s.duplicados++;
+      const tNorm = tramite.toUpperCase();
+      if (tNorm.includes('OBTENCIÓN')) s.obtencion++;
+      if (tNorm.includes('REVALIDACIÓN')) s.revalidaciones++;
+      if (tNorm.includes('RECATEGORIZACIÓN')) s.recategorizacion++;
+      if (tNorm.includes('DUPLICADO')) s.duplicados++;
 
-      if (sede === 'PUNO') s.puno++;
-      if (sede === 'JULIACA') s.juliaca++;
+      const sNorm = sede.toUpperCase();
+      if (sNorm.includes('PUNO')) s.puno++;
+      if (sNorm.includes('JULIACA')) s.juliaca++;
 
       if (!matrixMap[tramite]) matrixMap[tramite] = {};
       matrixMap[tramite][estado] = (matrixMap[tramite][estado] ?? 0) + 1;
@@ -168,6 +185,10 @@ export class DashboardComponent implements OnInit {
     })).sort((a, b) => b.total - a.total);
 
     return s;
+  }
+
+  pct(count: number, total: number) {
+    return total ? Math.round(count / total * 100) : 0;
   }
 
   // ── Charts ──────────────────────────────────────────────────
@@ -198,13 +219,17 @@ export class DashboardComponent implements OnInit {
 
     if (this.charts['states']) this.charts['states'].destroy();
 
+    // Premium Palette
+    const colors = ['#f59e0b', '#ef4444', '#10b981', '#1e3a8a'];
+    const CHART_FONT = { family: "'Inter', 'Roboto', sans-serif", size: 11 };
+
     this.charts['states'] = new Chart(ctx, {
       type: 'doughnut',
       data: {
         labels: ['En Proceso', 'Observado', 'Impreso', 'Atendido'],
         datasets: [{
           data: [data.enProceso, data.observados, data.impresos, data.atendidos],
-          backgroundColor: ['#f59e0b', '#ef4444', '#10b981', '#1e3a8a'],
+          backgroundColor: colors,
           borderWidth: 2,
           borderColor: '#ffffff'
         }]
@@ -214,7 +239,10 @@ export class DashboardComponent implements OnInit {
         maintainAspectRatio: false,
         cutout: '65%',
         plugins: {
-          legend: { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', padding: 15 } }
+          legend: { 
+            position: 'bottom', 
+            labels: { usePointStyle: true, pointStyle: 'circle', padding: 15, font: CHART_FONT } 
+          }
         }
       }
     });
@@ -226,29 +254,29 @@ export class DashboardComponent implements OnInit {
     if (!ctx) return;
 
     if (this.charts['tramites']) this.charts['tramites'].destroy();
+    const CHART_FONT = { family: "'Inter', 'Roboto', sans-serif", size: 11 };
 
     this.charts['tramites'] = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: ['Nuevos', 'Reval.', 'Recat.', 'Duplic.'],
+        labels: ['Nuevos/Obt.', 'Reval.', 'Recat.', 'Duplic.'],
         datasets: [{
           label: 'Cantidad',
           data: [data.obtencion, data.revalidaciones, data.recategorizacion, data.duplicados],
-          backgroundColor: '#3b82f6',
+          backgroundColor: '#1e3a8a',
           borderRadius: 8,
           barThickness: 30
         }]
       },
       options: {
-        indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false }
         },
         scales: {
-          x: { beginAtZero: true, grid: { color: '#f1f5f9' } },
-          y: { grid: { display: false } }
+          x: { grid: { display: false }, ticks: { font: CHART_FONT } },
+          y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1, font: CHART_FONT } }
         }
       }
     });
@@ -260,6 +288,7 @@ export class DashboardComponent implements OnInit {
     if (!ctx) return;
 
     if (this.charts['sedes']) this.charts['sedes'].destroy();
+    const CHART_FONT = { family: "'Inter', 'Roboto', sans-serif", size: 11 };
 
     this.charts['sedes'] = new Chart(ctx, {
       type: 'pie',
@@ -276,7 +305,10 @@ export class DashboardComponent implements OnInit {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', padding: 15 } }
+          legend: { 
+            position: 'bottom', 
+            labels: { usePointStyle: true, pointStyle: 'circle', padding: 15, font: CHART_FONT } 
+          }
         }
       }
     });
@@ -288,6 +320,7 @@ export class DashboardComponent implements OnInit {
     if (!ctx) return;
 
     if (this.charts['operador']) this.charts['operador'].destroy();
+    const CHART_FONT = { family: "'Inter', 'Roboto', sans-serif", size: 11 };
 
     const entries = Object.entries(data.porOperador).sort((a,b) => b[1]-a[1]).slice(0, 8);
 
@@ -309,8 +342,8 @@ export class DashboardComponent implements OnInit {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
-          y: { grid: { display: false } }
+          x: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1, font: CHART_FONT } },
+          y: { grid: { display: false }, ticks: { font: CHART_FONT } }
         }
       }
     });

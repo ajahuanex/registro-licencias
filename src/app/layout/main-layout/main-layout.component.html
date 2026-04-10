@@ -91,6 +91,12 @@
     </mat-nav-list>
 
     <div class="watermark-wrapper" *ngIf="!isCollapsed()">
+      <div class="session-info" *ngIf="authService.clientIp()">
+        <span class="ip-text">IP: {{ authService.clientIp() }}</span>
+        <span class="ua-text" [matTooltip]="authService.userAgent()">
+          {{ authService.userAgent() | slice:0:25 }}...
+        </span>
+      </div>
       <span class="watermark-text">&copy; 2026 JCAQ</span>
     </div>
   </mat-sidenav>

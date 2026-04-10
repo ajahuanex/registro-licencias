@@ -1,5 +1,6 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import PocketBase from 'pocketbase';
 import { FormBuilder, ReactiveFormsModule, Validators, FormControl } from '@angular/forms';
 import { RouterModule } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
@@ -13,6 +14,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { PocketbaseService } from '../core/services/pocketbase.service';
 import { ExpedienteService } from '../core/services/expediente.service';
+import { SeedDataService } from '../core/services/seed-data.service';
 import { ESTADOS_SISTEMA, PERFILES_SISTEMA } from '../core/constants/app.constants';
 
 // ─── Sync Modal ───────────────────────────────────────────────────────────────
@@ -66,12 +68,22 @@ import { ESTADOS_SISTEMA, PERFILES_SISTEMA } from '../core/constants/app.constan
       <button mat-flat-button color="primary" [disabled]="isRunning()" (click)="resetAll()" style="margin-left:8px;">
         <mat-icon>restart_alt</mat-icon> Resetear Base de Datos
       </button>
+
+      <div style="margin-top: 16px; border-top: 1px dashed #ccc; padding-top: 16px; display: flex; justify-content: space-between; gap: 8px;">
+        <button mat-stroked-button color="accent" [disabled]="form.invalid || isRunning()" (click)="limpiarDatosEjemplo()" style="flex: 1;">
+          <mat-icon>delete_sweep</mat-icon> Quitar Datos Ejemplo
+        </button>
+        <button mat-raised-button color="accent" [disabled]="form.invalid || isRunning()" (click)="generarDatosEjemplo()" style="flex: 1;">
+          <mat-icon>auto_awesome</mat-icon> Generar Datos Ejemplo
+        </button>
+      </div>
     </mat-dialog-actions>
   `
 })
 export class AdminAuthModal {
   private fb = inject(FormBuilder);
   private pbService = inject(PocketbaseService);
+  private seedService = inject(SeedDataService);
   private snackBar = inject(MatSnackBar);
 
   form = this.fb.group({
@@ -211,9 +223,17 @@ export class AdminAuthModal {
             { name: 'categoria', type: 'select', required: true, values: ['A-I', 'A-IIa', 'A-IIb', 'A-IIIa', 'A-IIIb', 'A-IIIc', 'B-I', 'B-IIa', 'B-IIb', 'B-IIc'] },
             { name: 'lugar_entrega', type: 'select', required: true, values: ['PUNO', 'JULIACA'] },
             { name: 'fecha_registro', type: 'date', required: true },
-            { name: 'fecha_entrega', type: 'date', required: false }
+            { name: 'fecha_entrega', type: 'date', required: false },
+            { name: 'es_ejemplo',   type: 'bool', required: false }
           ]
         });
+      }
+
+      // Add field es_ejemplo to existing "expedientes" if it doesn't exist
+      if (expCol && !expCol.fields.find((f: any) => f.name === 'es_ejemplo')) {
+        this.log('  ➕ Añadiendo "es_ejemplo" a expedientes...');
+        let fields = [...expCol.fields, { name: 'es_ejemplo', type: 'bool', required: false }];
+        await patchCol(expId, { fields });
       }
 
       // ── 2. operadores ──────────────────────────────────────────────────
@@ -257,6 +277,28 @@ export class AdminAuthModal {
             needsUpdate = true;
           }
         }
+        
+        // es_ejemplo check
+        if (!fields.find((f: any) => f.name === 'es_ejemplo')) {
+          this.log('  ➕ Añadiendo campo "es_ejemplo" a operadores...');
+          fields.push({ name: 'es_ejemplo', type: 'bool', required: false });
+          needsUpdate = true;
+        }
+
+        // dni check (Important for seeding)
+        if (!fields.find((f: any) => f.name === 'dni')) {
+          this.log('  ➕ Añadiendo campo "dni" a operadores...');
+          fields.push({ name: 'dni', type: 'text', required: true });
+          needsUpdate = true;
+        }
+
+        // nombre check
+        if (!fields.find((f: any) => f.name === 'nombre')) {
+          this.log('  ➕ Añadiendo campo "nombre" a operadores...');
+          fields.push({ name: 'nombre', type: 'text', required: true });
+          needsUpdate = true;
+        }
+
         if (needsUpdate) await patchCol(opId, { fields });
 
         // SEED DE SEDE DEFAULT (PUNO)
@@ -306,13 +348,24 @@ export class AdminAuthModal {
           name: 'sedes', type: 'base',
           listRule: '@request.auth.id != ""', viewRule: '@request.auth.id != ""',
           createRule: '@request.auth.id != ""', updateRule: '@request.auth.id != ""',
-          fields: [ { name: 'nombre', type: 'text', required: true }, { name: 'es_centro_entrega', type: 'bool', required: false } ]
+          fields: [ 
+            { name: 'nombre', type: 'text', required: true }, 
+            { name: 'es_centro_entrega', type: 'bool', required: false },
+            { name: 'es_ejemplo', type: 'bool', required: false }
+          ]
         });
         
         this.log('  ⏳ Poblando sedes iniciales...');
         await this.pbService.pb.collection('sedes').create({ nombre: 'PUNO', es_centro_entrega: true });
         await this.pbService.pb.collection('sedes').create({ nombre: 'JULIACA', es_centro_entrega: true });
         this.log('  ✅ Sedes creadas y pobladas.');
+      }
+
+      // ── 2.6. es_ejemplo field addition for sedes (if exists) ────────────────
+      if (sedesCol && !sedesCol.fields.find((f: any) => f.name === 'es_ejemplo')) {
+        this.log('  ➕ Añadiendo "es_ejemplo" a sedes...');
+        let fields = [...sedesCol.fields, { name: 'es_ejemplo', type: 'bool', required: false }];
+        await patchCol(sedesCol.id, { fields });
       }
 
       // ── 3. historial_acciones ──────────────────────────────────────────
@@ -348,6 +401,13 @@ export class AdminAuthModal {
            this.log('  ✅ "historial_acciones" actualizado con auditoría IP.');
         } else {
            this.log('  ✅ Historial verificado.');
+        }
+
+        // es_ejemplo check in historial_acciones
+        if (!fields.find((f: any) => f.name === 'es_ejemplo')) {
+           this.log('  ➕ Añadiendo "es_ejemplo" a historial...');
+           fields.push({ name: 'es_ejemplo', type: 'bool', required: false });
+           await patchCol(histCol.id, { fields });
         }
 
         // Asegurar patrón de ID
@@ -632,6 +692,64 @@ export class AdminAuthModal {
     await this.iniciarSync();
     this.isRunning.set(false);
   }
+
+  // -------------------------------------------------------------------
+  // Generar datos de ejemplo realistas
+  // -------------------------------------------------------------------
+  async generarDatosEjemplo() {
+    if (this.isRunning()) return;
+    this.isRunning.set(true);
+    this.logs.set([]);
+    
+    try {
+      const { email, password } = this.form.value;
+      const pbUrl = this.pbService.pb.baseURL;
+      const adminClient = new PocketBase(pbUrl);
+      
+      this.log('🔐 Autenticando para generación de datos...');
+      await adminClient.admins.authWithPassword(email!, password!);
+      
+      this.log('🏗️ Generando sedes, operadores y expedientes realistas en Licencias...');
+      await this.seedService.seedRealisticData(adminClient);
+      
+      this.log('✅ Generación completada con éxito.');
+      this.snackBar.open('Datos de ejemplo generados correctamente', 'OK', { duration: 4000 });
+    } catch (e: any) {
+      this.log(`❌ Error: ${e.message}`);
+    } finally {
+      this.isRunning.set(false);
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Limpiar solo los datos de ejemplo
+  // -------------------------------------------------------------------
+  async limpiarDatosEjemplo() {
+    if (this.isRunning()) return;
+    if (!confirm('¿Deseas eliminar todos los datos de ejemplo de Licencias?')) return;
+    
+    this.isRunning.set(true);
+    this.logs.set([]);
+    
+    try {
+      const { email, password } = this.form.value;
+      const pbUrl = this.pbService.pb.baseURL;
+      const adminClient = new PocketBase(pbUrl);
+      
+      this.log('🔐 Autenticando para limpieza...');
+      await adminClient.admins.authWithPassword(email!, password!);
+      
+      this.log('🧹 Eliminando registros marcados como ejemplo...');
+      await this.seedService.clearSampleData(adminClient);
+      
+      this.log('✅ Limpieza completada.');
+      this.snackBar.open('Datos de ejemplo eliminados.', 'OK', { duration: 3000 });
+    } catch (e: any) {
+      this.log(`❌ Error: ${e.message}`);
+    } finally {
+      this.isRunning.set(false);
+    }
+  }
 }
 
 // ─── Configuraciones Page ─────────────────────────────────────────────────────
@@ -826,6 +944,32 @@ export class AdminAuthModal {
         <button mat-flat-button color="primary" (click)="ejecutarCierreMasivo()" [disabled]="processingCierre()">
           <mat-icon>{{ processingCierre() ? 'hourglass_empty' : 'send' }}</mat-icon>
           {{ processingCierre() ? 'Procesando...' : 'Ejecutar Cierre Masivo' }}
+        </button>
+      </mat-card-actions>
+    </mat-card>
+
+    <!-- Card 7: Datos de Prueba -->
+    <mat-card class="settings-card mat-elevation-z3 accent-card">
+      <mat-card-header>
+        <mat-icon mat-card-avatar color="accent">auto_awesome</mat-icon>
+        <mat-card-title>Datos de Prueba / Demostración</mat-card-title>
+        <mat-card-subtitle>Poblar sistema con información realista</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <p>Genera automáticamente una estructura de datos completa para pruebas en Licencias:</p>
+        <ul>
+          <li><strong>Sedes:</strong> Puno y Juliaca con flag de entrega.</li>
+          <li><strong>Operadores:</strong> Cuentas de prueba para cada rol del sistema.</li>
+          <li><strong>Expedientes:</strong> 12 trámites de licencias con historial de acciones.</li>
+        </ul>
+        <div style="background:#fff3e0;padding:12px;border-radius:8px;font-size:0.85rem;margin-top:8px;color:#e65100;">
+           <mat-icon inline style="vertical-align:middle;font-size:16px;">verified</mat-icon> 
+           Todos los datos se marcan de forma segura y pueden quitarse en cualquier momento.
+        </div>
+      </mat-card-content>
+      <mat-card-actions align="end">
+        <button mat-raised-button color="accent" (click)="openInitModal()">
+          <mat-icon>manage_search</mat-icon> Gestionar Datos Ejemplo
         </button>
       </mat-card-actions>
     </mat-card>

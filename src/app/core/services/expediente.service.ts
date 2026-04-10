@@ -53,7 +53,9 @@ export class ExpedienteService {
         fecha: new Date().toISOString(),
         estado_anterior: opts?.estadoAnterior || '',
         estado_nuevo: opts?.estadoNuevo || '',
-        detalles: detalles?.trim() || 'Log de sistema'
+        detalles: detalles?.trim() || 'Log de sistema',
+        ip_publica: this.authService.clientIp() || '',
+        user_agent: this.authService.userAgent() || ''
       };
 
       console.log("[HISTORY DEBUG] Intentando guardar log:", payload);
@@ -327,11 +329,51 @@ export class ExpedienteService {
       if (filterExtra) filter += ` && (${filterExtra})`;
 
       return await this.pbService.pb.collection(this.collectionName).getFullList({
-        filter,
-        expand: 'operador'
+        filter: filter,
+        expand: 'operador',
+        sort: '-fecha_registro'
       });
     } catch (error) {
       console.error('Error fetching by date range:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Retrieves all unique dossiers where a specific operator has performed an action 
+   * within a given date range. This is used for personal dashboards.
+   */
+  async getByOperatorInterventionsRange(userId: string, start: Date, end: Date): Promise<RecordModel[]> {
+    try {
+      // 1. Get unique dossier IDs from history within the range for this user
+      const startIso = start.toISOString();
+      const endIso = end.toISOString();
+      const filterActions = `operador_id = '${userId}' && fecha >= '${startIso}' && fecha <= '${endIso}'`;
+      
+      const logs = await this.pbService.pb.collection('historial_acciones').getFullList({
+        filter: filterActions,
+        fields: 'expediente_id'
+      });
+      
+      const uniqueIds = Array.from(new Set(logs.map(l => l['expediente_id']).filter(id => !!id)));
+      if (uniqueIds.length === 0) return [];
+
+      // 2. Fetch the actual dossiers in chunks
+      const chunkSize = 40;
+      let expList: RecordModel[] = [];
+      for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+        const chunk = uniqueIds.slice(i, i + chunkSize);
+        const filterExp = chunk.map(id => `id = "${id}"`).join(' || ');
+        const results = await this.pbService.pb.collection(this.collectionName).getFullList({
+          filter: filterExp,
+          expand: 'operador'
+        });
+        expList = [...expList, ...results];
+      }
+      
+      return expList;
+    } catch (error) {
+      console.error('Error fetching by operator interventions:', error);
       return [];
     }
   }

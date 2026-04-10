@@ -33,7 +33,7 @@ export class AuditoriaComponent implements OnInit {
       (log['detalles']?.toLowerCase() || '').includes(term)
     );
   });
-  displayedColumns = ['fecha', 'operador_nombre', 'operador_perfil', 'expediente_dni', 'accion', 'detalles'];
+  displayedColumns = ['fecha', 'operador_nombre', 'operador_perfil', 'expediente_dni', 'accion', 'detalles', 'ip_publica', 'user_agent'];
 
   async ngOnInit() {
     try {
