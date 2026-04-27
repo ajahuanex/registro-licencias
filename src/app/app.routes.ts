@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
+import { otiGuard }  from './notificaciones/guards/oti.guard';
 import { MainLayoutComponent } from './layout/main-layout/main-layout.component';
 
 export const routes: Routes = [
@@ -75,6 +76,12 @@ export const routes: Routes = [
       {
         path: 'reporte-mensual',
         loadComponent: () => import('./reporte-mensual/reporte-mensual.component').then(m => m.ReporteMensualComponent)
+      },
+      // Módulo exclusivo OTI — requiere role == 'OTI' o 'admin'
+      {
+        path: 'notificaciones-oti',
+        canActivate: [otiGuard],
+        loadComponent: () => import('./notificaciones/oti-notification/oti-notification.component').then(m => m.OtiNotificationComponent)
       }
     ]
   },

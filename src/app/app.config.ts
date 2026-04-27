@@ -1,5 +1,6 @@
 import { ApplicationConfig, provideZoneChangeDetection, LOCALE_ID } from '@angular/core';
 import { provideRouter } from '@angular/router';
+import { provideHttpClient, withFetch } from '@angular/common/http';
 
 import { routes } from './app.routes';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -12,7 +13,8 @@ registerLocaleData(localeEsPe, 'es-PE');
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }), 
-    provideRouter(routes), 
+    provideRouter(routes),
+    provideHttpClient(withFetch()),
     provideAnimationsAsync(),
     { provide: LOCALE_ID, useValue: 'es-PE' },
     { provide: MAT_DATE_LOCALE, useValue: 'es-PE' }
