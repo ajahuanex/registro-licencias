@@ -187,7 +187,7 @@ export class ExpedienteService {
       const start = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
       const end = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
 
-      const filterStr = `apellidos_nombres = '${apellidosNombres}' && fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
+      const filterStr = `apellidos_nombres = "${apellidosNombres}" && fecha_registro >= "${this.toPbDate(start)}" && fecha_registro <= "${this.toPbDate(end)}"`;
 
       const records = await this.pbService.pb.collection(this.collectionName).getList(1, 1, {
         filter: filterStr
@@ -206,8 +206,8 @@ export class ExpedienteService {
    */
   async getPendingDeliveries(lugar: string): Promise<RecordModel[]> {
     try {
-      const filterBase = `estado = 'VERIFICADO'`;
-      const filterStr = (lugar && lugar !== 'TODAS') ? `${filterBase} && lugar_entrega = '${lugar}'` : filterBase;
+      const filterBase = `estado = "VERIFICADO"`;
+      const filterStr = (lugar && lugar !== 'TODAS') ? `${filterBase} && lugar_entrega = "${lugar}"` : filterBase;
 
       return await this.pbService.pb.collection('expedientes').getFullList({
         filter: filterStr
@@ -229,7 +229,7 @@ export class ExpedienteService {
 
       // Backend (PocketBase remote) throws 400 when filtering by updated.
       // Using fecha_registro instead to safely fetch records.
-      const filterStr = `estado = 'ENTREGADO' && lugar_entrega = '${lugar}' && fecha_registro >= "${this.toPbDate(start)}" && fecha_registro <= "${this.toPbDate(end)}"`;
+      const filterStr = `estado = "ENTREGADO" && lugar_entrega = "${lugar}" && fecha_registro >= "${this.toPbDate(start)}" && fecha_registro <= "${this.toPbDate(end)}"`;
 
       return await this.pbService.pb.collection('expedientes').getFullList({
         filter: filterStr
@@ -253,12 +253,12 @@ export class ExpedienteService {
     operadorId?: string
   ): Promise<{ items: RecordModel[], totalItems: number }> {
     try {
-      let filterStr = `(${states.map(s => `estado = '${s}'`).join(' || ')})`;
+      let filterStr = `(${states.map(s => `estado = "${s}"`).join(' || ')})`;
       if (lugar && lugar !== 'TODAS') {
-        filterStr = `lugar_entrega = '${lugar}' && ${filterStr}`;
+        filterStr = `lugar_entrega = "${lugar}" && ${filterStr}`;
       }
       if (operadorId) {
-        filterStr = `operador = '${operadorId}' && ${filterStr}`;
+        filterStr = `operador = "${operadorId}" && ${filterStr}`;
       }
       
       // Use both fecha_entrega (for deliveries) and updated (for other states) as fallback range
@@ -300,9 +300,9 @@ export class ExpedienteService {
       const start = new Date(year, month - 1, day, 0, 0, 0, 0);
       const end = new Date(year, month - 1, day, 23, 59, 59, 999);
 
-      let filterStr = `fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
+      let filterStr = `fecha_registro >= "${this.toPbDate(start)}" && fecha_registro <= "${this.toPbDate(end)}"`;
       if (operadorId) {
-        filterStr += ` && operador = '${operadorId}'`;
+        filterStr += ` && operador = "${operadorId}"`;
       }
       const queryOpts = {
         filter: filterStr,
@@ -325,7 +325,7 @@ export class ExpedienteService {
    */
   async getByDateRange(start: Date, end: Date, filterExtra?: string): Promise<RecordModel[]> {
     try {
-      let filter = `fecha_registro >= '${this.toPbDate(start)}' && fecha_registro <= '${this.toPbDate(end)}'`;
+      let filter = `fecha_registro >= "${this.toPbDate(start)}" && fecha_registro <= "${this.toPbDate(end)}"`;
       if (filterExtra) filter += ` && (${filterExtra})`;
 
       return await this.pbService.pb.collection(this.collectionName).getFullList({
@@ -346,9 +346,9 @@ export class ExpedienteService {
   async getByOperatorInterventionsRange(userId: string, start: Date, end: Date): Promise<RecordModel[]> {
     try {
       // 1. Get unique dossier IDs from history within the range for this user
-      const startIso = start.toISOString();
-      const endIso = end.toISOString();
-      const filterActions = `operador_id = '${userId}' && fecha >= '${startIso}' && fecha <= '${endIso}'`;
+      const startIso = this.toPbDate(start);
+      const endIso = this.toPbDate(end);
+      const filterActions = `operador_id = "${userId}" && fecha >= "${startIso}" && fecha <= "${endIso}"`;
       
       const logs = await this.pbService.pb.collection('historial_acciones').getFullList({
         filter: filterActions,
@@ -370,7 +370,6 @@ export class ExpedienteService {
         });
         expList = [...expList, ...results];
       }
-      
       return expList;
     } catch (error) {
       console.error('Error fetching by operator interventions:', error);
@@ -380,7 +379,7 @@ export class ExpedienteService {
 
   async getMyActionsCount(userId: string, start: Date, end: Date): Promise<number> {
     try {
-      const filter = `operador_id = '${userId}' && fecha >= '${start.toISOString()}' && fecha <= '${end.toISOString()}'`;
+      const filter = `operador_id = "${userId}" && fecha >= "${this.toPbDate(start)}" && fecha <= "${this.toPbDate(end)}"`;
       const result = await this.pbService.pb.collection('historial_acciones').getList(1, 1, { filter });
       return result.totalItems;
     } catch {
@@ -395,7 +394,7 @@ export class ExpedienteService {
   async getMisAtenciones(operadorId: string): Promise<RecordModel[]> {
     try {
       const options = {
-        filter: `operador_id = '${operadorId}'`
+        filter: `operador_id = "${operadorId}"`
       };
       const logs = await this.pbService.pb.collection('historial_acciones').getFullList(options);
 
@@ -457,5 +456,64 @@ export class ExpedienteService {
       console.error('Error fetching mis atenciones:', error);
       return [];
     }
+  }
+
+  /**
+   * Obtiene el historial completo de un solo expediente.
+   */
+  async getHistoryByExpediente(expedienteId: string): Promise<RecordModel[]> {
+    try {
+      const filter = `expediente_id = "${expedienteId}"`;
+      let logs = await this.pbService.pb.collection('historial_acciones').getFullList({
+        filter: filter,
+        sort: '-created'
+      });
+      
+      // Fallback to historial_expedientes if acciones is empty
+      if (logs.length === 0) {
+        logs = await this.pbService.pb.collection('historial_expedientes').getFullList({
+          filter: filter,
+          sort: '-created'
+        });
+      }
+
+      // 🚨 FINAL FALLBACK: Search by DNI if ID yielded nothing 
+      // (Useful for records where ID relation might be broken)
+      if (logs.length === 0) {
+        const exp = await this.pbService.pb.collection('expedientes').getOne(expedienteId);
+        if (exp && exp['dni_solicitante']) {
+           logs = await this.pbService.pb.collection('historial_acciones').getFullList({
+             filter: `expediente_dni = "${exp['dni_solicitante']}"`,
+             sort: '-fecha'
+           });
+        }
+      }
+      return logs;
+    } catch (error) {
+      console.error(`Error al obtener historial del expediente ${expedienteId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * Busca expedientes por DNI del solicitante (Público).
+   */
+  async searchByDniPublic(dni: string): Promise<RecordModel[]> {
+    try {
+      return await this.pbService.pb.collection(this.collectionName).getFullList({
+        filter: `dni_solicitante = "${dni}"`,
+        sort: '-fecha_registro'
+      });
+    } catch (error) {
+      console.error('Error in searchByDniPublic:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obtiene un expediente por ID de forma pública.
+   */
+  async getExpedientePublic(id: string): Promise<RecordModel> {
+    return await this.pbService.pb.collection(this.collectionName).getOne(id);
   }
 }

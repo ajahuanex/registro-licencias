@@ -6,8 +6,11 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ExpedienteService } from '../core/services/expediente.service';
 import { AuthService } from '../core/services/auth.service';
+import { ReporteService } from '../core/services/reporte.service';
 import { RecordModel } from 'pocketbase';
 import { Chart, registerables } from 'chart.js';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 Chart.register(...registerables);
 
@@ -50,7 +53,8 @@ interface DashboardStats {
 })
 export class DashboardComponent implements OnInit {
   private expedienteService = inject(ExpedienteService);
-  authService = inject(AuthService);
+  public authService = inject(AuthService);
+  private reporteService = inject(ReporteService);
   
   private emptyStats(): StatsData {
     return {
@@ -347,5 +351,138 @@ export class DashboardComponent implements OnInit {
         }
       }
     });
+  }
+
+  // ── Reports ──────────────────────────────────────────────────
+
+  async exportToPDF() {
+    this.isLoading.set(true);
+    try {
+      const user = this.authService.currentUser();
+      const period = this.activeTab();
+      const data = this.stats()[period];
+      const doc = new jsPDF({ orientation: 'portrait' });
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('es-PE');
+      const timeStr = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+
+      // 1. Register Report & get QR
+      let qrDataUrl = '';
+      try {
+        const snapshot = {
+          operador: user?.['nombre'] || 'N/A',
+          sede: 'Consolidado',
+          fecha_reporte: dateStr,
+          tipo: 'DASHBOARD_RESUMEN',
+          registros: [{ 
+            n: 1, 
+            nombre: 'Resumen de Métricas', 
+            detalles: JSON.stringify(data)
+          }]
+        };
+        
+        const { verifyUrl } = await this.reporteService.registrarReporte({
+          generado_por: user!.id,
+          tipo_reporte: 'REPORTE_DIARIO', // Generic for now or add a new type
+          fecha_reporte: now.toISOString().split('T')[0],
+          total_registros: data.total,
+          sede: 'Ambas'
+        }, snapshot as any);
+        qrDataUrl = await this.reporteService.generarQR(verifyUrl);
+      } catch (e) { console.warn('QR skip:', e); }
+
+      // 2. Generate PDF Content
+      const pageW = doc.internal.pageSize.width;
+      
+      // Header
+      doc.setFontSize(16);
+      doc.setTextColor(30, 58, 138); // Navy blue
+      doc.text('REPORTE EJECUTIVO DE GESTIÓN', 14, 20);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`DRTC PUNO - Sistema de Licencias de Conducir`, 14, 26);
+      doc.text(`Generado por: ${user?.['nombre'] || 'SISTEMA'} | ${dateStr} ${timeStr}`, 14, 31);
+      
+      if (qrDataUrl) {
+        doc.addImage(qrDataUrl, 'PNG', pageW - 40, 10, 26, 26);
+        doc.setFontSize(7);
+        doc.text('Validar Reporte', pageW - 36, 38);
+      }
+
+      doc.setDrawColor(200);
+      doc.line(14, 42, pageW - 14, 42);
+
+      // Section: Period Info
+      doc.setFontSize(12);
+      doc.setTextColor(0);
+      const periodLabel = period === 'daily' ? 'Diario (Hoy)' : (period === 'monthly' ? 'Mensual' : 'Anual');
+      doc.text(`Resumen de Periodo: ${periodLabel}`, 14, 52);
+
+      // Table 1: Primary Metrics
+      autoTable(doc, {
+        startY: 58,
+        head: [['Métrica', 'Valor', 'Porcentaje']],
+        body: [
+          ['Total Expedientes', data.total.toString(), '100%'],
+          ['En Proceso', data.enProceso.toString(), `${this.pct(data.enProceso, data.total)}%`],
+          ['Impresos / Listos', data.impresos.toString(), `${this.pct(data.impresos, data.total)}%`],
+          ['Atendidos (Finalizados)', data.atendidos.toString(), `${this.pct(data.atendidos, data.total)}%`],
+          ['Observados', data.observados.toString(), `${this.pct(data.observados, data.total)}%`]
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [30, 58, 138] },
+        styles: { fontSize: 9 }
+      });
+
+      // Table 2: By Type
+      autoTable(doc, {
+        startY: (doc as any).lastAutoTable.finalY + 10,
+        head: [['Trámite', 'Cantidad', 'Distribución']],
+        body: [
+          ['Obtención de Licencia', data.obtencion.toString(), `${this.pct(data.obtencion, data.total)}%`],
+          ['Revalidación', data.revalidaciones.toString(), `${this.pct(data.revalidaciones, data.total)}%`],
+          ['Recategorización', data.recategorizacion.toString(), `${this.pct(data.recategorizacion, data.total)}%`],
+          ['Duplicados', data.duplicados.toString(), `${this.pct(data.duplicados, data.total)}%`]
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 9 }
+      });
+
+      // Matrix Table
+      doc.addPage();
+      doc.setFontSize(13);
+      doc.text('Matriz Cruzada: Trámites por Estado', 14, 20);
+
+      const matrixHead = [['Trámite', ...this.estadoKeys, 'Total']];
+      const matrixBody = data.matrix.map(row => [
+        row.tramite,
+        ...this.estadoKeys.map(k => row.estados[k] || 0),
+        row.total
+      ]);
+
+      autoTable(doc, {
+        startY: 28,
+        head: matrixHead,
+        body: matrixBody,
+        theme: 'grid',
+        styles: { fontSize: 7, halign: 'center' },
+        columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } },
+        headStyles: { fillColor: [30, 41, 59] }
+      });
+
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text('Documento generado automáticamente por la plataforma de gestión DRTC PUNO.', 14, (doc as any).lastAutoTable.finalY + 15);
+
+      const filename = `Dashboard_${period}_${now.toISOString().slice(0, 10)}.pdf`;
+      doc.save(filename);
+    } catch (error: any) {
+      console.error('Export error:', error);
+      alert('Error al generar PDF: ' + error.message);
+    } finally {
+      this.isLoading.set(false);
+    }
   }
 }

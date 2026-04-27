@@ -30,9 +30,11 @@
           <mat-icon [class.rolling]="isLoading()">sync</mat-icon>
         </button>
         <!-- Mobile Filter Action -->
-        <button mat-icon-button (click)="mainLayout?.sidenav()?.open()" *ngIf="mainLayout?.isHandset?.()" matTooltip="Filtros" class="small-icon-btn mobile-only-btn" color="primary">
-          <mat-icon>filter_alt</mat-icon>
-        </button>
+        @if (mainLayout?.isHandset?.()) {
+          <button mat-icon-button (click)="mainLayout?.sidenav()?.open()" matTooltip="Filtros" class="small-icon-btn mobile-only-btn" color="primary">
+            <mat-icon>filter_alt</mat-icon>
+          </button>
+        }
       </div>
     </div>
   </div>

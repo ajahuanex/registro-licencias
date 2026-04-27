@@ -26,9 +26,11 @@
           <mat-icon>file_download</mat-icon> <span class="btn-text">Exportar</span>
         </button>
         <!-- Mobile Filter Action -->
-        <button mat-icon-button (click)="mainLayout?.sidenav()?.open()" *ngIf="mainLayout?.isHandset?.()" matTooltip="Filtros" class="small-icon-btn mobile-only-btn" color="primary">
-          <mat-icon>filter_alt</mat-icon>
-        </button>
+        @if (mainLayout?.isHandset?.()) {
+          <button mat-icon-button (click)="mainLayout?.sidenav()?.open()" matTooltip="Filtros" class="small-icon-btn mobile-only-btn" color="primary">
+            <mat-icon>filter_alt</mat-icon>
+          </button>
+        }
       </div>
     </div>
   </div>
@@ -215,12 +217,16 @@
           <ng-container matColumnDef="acciones">
             <th mat-header-cell *matHeaderCellDef class="text-right"> Acciones </th>
             <td mat-cell *matCellDef="let element" class="text-right">
-              <button mat-icon-button color="primary" matTooltip="Editar" (click)="editRecord(element)" *ngIf="canEdit(element)">
-                <mat-icon>edit</mat-icon>
-              </button>
-              <button mat-icon-button color="accent" matTooltip="Ver Detalles" (click)="editRecord(element)" *ngIf="!canEdit(element)">
-                <mat-icon>visibility</mat-icon>
-              </button>
+              @if (canEdit(element)) {
+                <button mat-icon-button color="primary" matTooltip="Editar" (click)="editRecord(element)">
+                  <mat-icon>edit</mat-icon>
+                </button>
+              }
+              @if (!canEdit(element)) {
+                <button mat-icon-button color="accent" matTooltip="Ver Detalles" (click)="editRecord(element)">
+                  <mat-icon>visibility</mat-icon>
+                </button>
+              }
             </td>
           </ng-container>
 

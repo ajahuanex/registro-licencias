@@ -9,6 +9,7 @@ import { ExpedienteService, ExpedienteCreate } from '../core/services/expediente
 import { AuthService } from '../core/services/auth.service';
 import { PocketbaseService } from '../core/services/pocketbase.service';
 import { ESTADOS_SISTEMA, ESTADOS_POR_PERFIL } from '../core/constants/app.constants';
+import { ExpedienteTrackerComponent } from '../expedientes/expediente-tracker/expediente-tracker.component';
 
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
 import { MatPaginatorModule, MatPaginator } from '@angular/material/paginator';
@@ -615,6 +616,15 @@ export class MisExpedientes implements OnInit {
         if (this.userPerfil === 'IMPRESOR' || this.userPerfil === 'ADMINISTRADOR' || this.userPerfil === 'OTI') this.loadAtenciones();
       }
     });
+  }
+
+  verSeguimiento(record: RecordModel) {
+    this.dialog.open(ExpedienteTrackerComponent, {
+      width: '90vw',
+      maxWidth: '600px',
+      data: { expedienteId: record.id },
+    }).componentInstance.expedienteId = record.id; 
+    // Since I'm using @Input, I set it on the instance or pass it via data if I refactor the component to use MAT_DIALOG_DATA
   }
 
   async deleteExpediente(record: any) {

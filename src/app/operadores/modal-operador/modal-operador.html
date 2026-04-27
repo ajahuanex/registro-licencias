@@ -48,10 +48,12 @@
       <mat-icon matPrefix>place</mat-icon>
     </mat-form-field>
 
-    <div class="password-note" *ngIf="isEditMode">
-      <mat-icon>info</mat-icon>
-      <span>Deja la contraseña en blanco si no deseas cambiarla.</span>
-    </div>
+    @if (isEditMode) {
+      <div class="password-note">
+        <mat-icon>info</mat-icon>
+        <span>Deja la contraseña en blanco si no deseas cambiarla.</span>
+      </div>
+    }
 
     <mat-form-field appearance="outline" class="full-width">
       <mat-label>Contraseña</mat-label>

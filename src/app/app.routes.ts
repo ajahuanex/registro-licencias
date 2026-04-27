@@ -4,13 +4,29 @@ import { MainLayoutComponent } from './layout/main-layout/main-layout.component'
 
 export const routes: Routes = [
   {
-    path: 'login',
-    loadComponent: () => import('./auth/login/login.component').then(m => m.LoginComponent)
+    path: '',
+    redirectTo: 'consulta',
+    pathMatch: 'full'
+  },
+  {
+    path: 'consulta',
+    pathMatch: 'full',
+    loadComponent: () => import('./expedientes/consulta-expediente/consulta-expediente.component').then(m => m.ConsultaExpedienteComponent)
+  },
+  {
+    path: 'seguimiento/:id',
+    pathMatch: 'full',
+    loadComponent: () => import('./expedientes/consulta-expediente/consulta-expediente.component').then(m => m.ConsultaExpedienteComponent)
   },
   {
     // Public route — no auth required (accessed via QR code scans)
     path: 'verificar/:id',
+    pathMatch: 'full',
     loadComponent: () => import('./verificar-reporte/verificar-reporte.component').then(m => m.VerificarReporteComponent)
+  },
+  {
+    path: 'login',
+    loadComponent: () => import('./auth/login/login.component').then(m => m.LoginComponent)
   },
   {
     path: '',
@@ -62,5 +78,5 @@ export const routes: Routes = [
       }
     ]
   },
-  { path: '**', redirectTo: 'login' }
+  { path: '**', redirectTo: 'consulta' }
 ];

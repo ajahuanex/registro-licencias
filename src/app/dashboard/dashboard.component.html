@@ -11,6 +11,10 @@
       </div>
       
       <div class="header-actions">
+        <button mat-flat-button color="accent" (click)="exportToPDF()" [disabled]="isLoading()" class="export-btn">
+          <mat-icon>picture_as_pdf</mat-icon>
+          EXPORTAR PDF
+        </button>
         <button mat-flat-button color="primary" (click)="loadAllStats()" [disabled]="isLoading()" class="refresh-btn">
           <mat-icon [class.rolling]="isLoading()">sync</mat-icon>
           ACTUALIZAR DATOS

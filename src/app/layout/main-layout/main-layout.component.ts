@@ -54,8 +54,12 @@ import { MatInputModule } from '@angular/material/input';
     <mat-dialog-actions align="end">
       <button mat-button mat-dialog-close [disabled]="loading()">Cancelar</button>
       <button mat-flat-button color="primary" [disabled]="form.invalid || loading()" (click)="changePassword()">
-        <mat-icon *ngIf="!loading()">save</mat-icon>
-        <span *ngIf="loading()" class="spinner-small" style="margin-right:8px; display:inline-block; width:16px; height:16px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></span>
+        @if (!loading()) {
+          <mat-icon>save</mat-icon>
+        }
+        @if (loading()) {
+          <span class="spinner-small" style="margin-right:8px; display:inline-block; width:16px; height:16px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin 1s linear infinite;"></span>
+        }
         Actualizar Contraseña
       </button>
     </mat-dialog-actions>

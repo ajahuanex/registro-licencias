@@ -23,9 +23,11 @@
           <mat-icon>tune</mat-icon>
         </button>
         <!-- Mobile Filter Action -->
-        <button mat-icon-button (click)="mainLayout?.sidenav()?.open()" *ngIf="mainLayout?.isHandset?.()" matTooltip="Filtros" class="small-icon-btn mobile-only-btn" color="primary">
-          <mat-icon>filter_alt</mat-icon>
-        </button>
+        @if (mainLayout?.isHandset?.()) {
+          <button mat-icon-button (click)="mainLayout?.sidenav()?.open()" matTooltip="Filtros" class="small-icon-btn mobile-only-btn" color="primary">
+            <mat-icon>filter_alt</mat-icon>
+          </button>
+        }
       </div>
 
       <div class="button-group">
@@ -41,23 +43,30 @@
 
         <!-- Dynamic Actions -->
         @if (selection.selected.length > 0) {
-          <button mat-flat-button color="accent" class="compact-btn" (click)="marcarComoImpresoMasivo()" *ngIf="userPerfil === 'IMPRESOR' || userPerfil === 'OTI'">
-            <mat-icon>print</mat-icon> <span class="btn-text">Imprimir</span> ({{ selection.selected.length }})
-          </button>
-          <button mat-flat-button color="primary" class="compact-btn" (click)="marcarComoVerificadoMasivo()" *ngIf="userPerfil === 'SUPERVISOR' || userPerfil === 'OTI'">
-            <mat-icon>fact_check</mat-icon> <span class="btn-text">Verificar</span> ({{ selection.selected.length }})
-          </button>
-          <button mat-flat-button color="primary" class="compact-btn" (click)="marcarComoEntregadoMasivo()" *ngIf="userPerfil === 'ENTREGADOR' || userPerfil === 'OTI'">
-            <mat-icon>how_to_reg</mat-icon> <span class="btn-text">Entregar</span> ({{ selection.selected.length }})
-          </button>
+          @if (userPerfil === 'IMPRESOR' || userPerfil === 'OTI') {
+            <button mat-flat-button color="accent" class="compact-btn" (click)="marcarComoImpresoMasivo()">
+              <mat-icon>print</mat-icon> <span class="btn-text">Imprimir</span> ({{ selection.selected.length }})
+            </button>
+          }
+          @if (userPerfil === 'SUPERVISOR' || userPerfil === 'OTI') {
+            <button mat-flat-button color="primary" class="compact-btn" (click)="marcarComoVerificadoMasivo()">
+              <mat-icon>fact_check</mat-icon> <span class="btn-text">Verificar</span> ({{ selection.selected.length }})
+            </button>
+          }
+          @if (userPerfil === 'ENTREGADOR' || userPerfil === 'OTI') {
+            <button mat-flat-button color="primary" class="compact-btn" (click)="marcarComoEntregadoMasivo()">
+              <mat-icon>how_to_reg</mat-icon> <span class="btn-text">Entregar</span> ({{ selection.selected.length }})
+            </button>
+          }
         }
 
-        <button mat-raised-button color="primary" (click)="openModal()" 
-                [disabled]="['IMPRESOR', 'SUPERVISOR', 'DIRECTIVO'].includes(userPerfil)" 
-                *ngIf="!['DIRECTIVO'].includes(userPerfil)"
-                class="compact-btn">
-          <mat-icon>add_circle</mat-icon> <span class="btn-text">Nuevo</span>
-        </button>
+        @if (!['DIRECTIVO'].includes(userPerfil)) {
+          <button mat-raised-button color="primary" (click)="openModal()" 
+                  [disabled]="['IMPRESOR', 'SUPERVISOR', 'DIRECTIVO'].includes(userPerfil)" 
+                  class="compact-btn">
+            <mat-icon>add_circle</mat-icon> <span class="btn-text">Nuevo</span>
+          </button>
+        }
       </div>
     </div>
   </div>
@@ -65,23 +74,25 @@
   <div class="content-area">
   
         <!-- Advanced Filter Box -->
-        <mat-card class="advanced-filter-card no-print mat-elevation-z2" *ngIf="showAdvancedFilter" style="margin-bottom: 1rem; padding: 1rem; border-left: 4px solid var(--primary-color);">
-          <div style="display: flex; gap: 1rem; align-items: center;">
-            <mat-icon style="color: var(--primary-color);">date_range</mat-icon>
-            <mat-form-field appearance="outline" subscriptSizing="dynamic">
-              <mat-label>Selecciona un rango prolongado</mat-label>
-              <mat-date-range-input [rangePicker]="rangePicker">
-                <input matStartDate [(ngModel)]="startDate" placeholder="Inicio">
-                <input matEndDate [(ngModel)]="endDate" placeholder="Fin">
-              </mat-date-range-input>
-              <mat-datepicker-toggle matIconSuffix [for]="rangePicker"></mat-datepicker-toggle>
-              <mat-date-range-picker #rangePicker></mat-date-range-picker>
-            </mat-form-field>
-            
-            <button mat-flat-button color="primary" (click)="applyRangeFilter()"><mat-icon>search</mat-icon> Consultar Múltiples Días</button>
-            <button mat-icon-button (click)="toggleAdvancedFilter()" matTooltip="Volver a Búsqueda Diaria"><mat-icon>close</mat-icon></button>
-          </div>
-        </mat-card>
+        @if (showAdvancedFilter) {
+          <mat-card class="advanced-filter-card no-print mat-elevation-z2" style="margin-bottom: 1rem; padding: 1rem; border-left: 4px solid var(--primary-color);">
+            <div style="display: flex; gap: 1rem; align-items: center;">
+              <mat-icon style="color: var(--primary-color);">date_range</mat-icon>
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Selecciona un rango prolongado</mat-label>
+                <mat-date-range-input [rangePicker]="rangePicker">
+                  <input matStartDate [(ngModel)]="startDate" placeholder="Inicio">
+                  <input matEndDate [(ngModel)]="endDate" placeholder="Fin">
+                </mat-date-range-input>
+                <mat-datepicker-toggle matIconSuffix [for]="rangePicker"></mat-datepicker-toggle>
+                <mat-date-range-picker #rangePicker></mat-date-range-picker>
+              </mat-form-field>
+              
+              <button mat-flat-button color="primary" (click)="applyRangeFilter()"><mat-icon>search</mat-icon> Consultar Múltiples Días</button>
+              <button mat-icon-button (click)="toggleAdvancedFilter()" matTooltip="Volver a Búsqueda Diaria"><mat-icon>close</mat-icon></button>
+            </div>
+          </mat-card>
+        }
 
         <!-- Stat Info and Search -->
         <div class="stat-bar no-print compact hide-on-mobile" style="display: flex; gap: 0.5rem; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 0.5rem;">
@@ -266,32 +277,43 @@
                     <ng-container matColumnDef="acciones">
                       <th mat-header-cell *matHeaderCellDef class="text-right no-print"> Acciones </th>
                       <td mat-cell *matCellDef="let element" class="text-right no-print">
-                        <button mat-icon-button color="accent" matTooltip="Marcar como IMPRESO (Rápido)" 
-                                (click)="marcarComoImpreso(element)" 
-                                *ngIf="(userPerfil === 'IMPRESOR' || userPerfil === 'OTI') && element.estado === 'EN PROCESO'">
-                          <mat-icon>print</mat-icon>
+                        @if ((userPerfil === 'IMPRESOR' || userPerfil === 'OTI') && element.estado === 'EN PROCESO') {
+                          <button mat-icon-button color="accent" matTooltip="Marcar como IMPRESO (Rápido)" 
+                                  (click)="marcarComoImpreso(element)">
+                            <mat-icon>print</mat-icon>
+                          </button>
+                        }
+                        @if ((userPerfil === 'SUPERVISOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.estado === 'IMPRESO') {
+                          <button mat-icon-button color="accent" matTooltip="Marcar como VERIFICADO (Rápido)" 
+                                  (click)="marcarComoVerificado(element)">
+                            <mat-icon>fact_check</mat-icon>
+                          </button>
+                        }
+                        @if ((userPerfil === 'ENTREGADOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.estado === 'VERIFICADO') {
+                          <button mat-icon-button color="primary" matTooltip="Marcar como ENTREGADO (Rápido)" 
+                                  (click)="marcarComoEntregado(element)">
+                            <mat-icon>how_to_reg</mat-icon>
+                          </button>
+                        }
+                        <button mat-icon-button color="accent" matTooltip="Ver Seguimiento / Historial" (click)="verSeguimiento(element)">
+                          <mat-icon>history</mat-icon>
                         </button>
-                        <button mat-icon-button color="accent" matTooltip="Marcar como VERIFICADO (Rápido)" 
-                                (click)="marcarComoVerificado(element)" 
-                                *ngIf="(userPerfil === 'SUPERVISOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.estado === 'IMPRESO'">
-                          <mat-icon>fact_check</mat-icon>
-                        </button>
-                        <button mat-icon-button color="primary" matTooltip="Marcar como ENTREGADO (Rápido)" 
-                                (click)="marcarComoEntregado(element)" 
-                                *ngIf="(userPerfil === 'ENTREGADOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.estado === 'VERIFICADO'">
-                          <mat-icon>how_to_reg</mat-icon>
-                        </button>
-                        <button mat-icon-button color="primary" matTooltip="Editar" (click)="openModal(element)" *ngIf="canEdit(element)">
-                          <mat-icon>edit</mat-icon>
-                        </button>
-                        <button mat-icon-button color="accent" matTooltip="Ver Detalles" (click)="openModal(element)" *ngIf="!canEdit(element)">
-                          <mat-icon>visibility</mat-icon>
-                        </button>
-                        <button mat-icon-button color="warn" matTooltip="Eliminar" 
-                                (click)="deleteExpediente(element)" 
-                                *ngIf="canDelete(element)">
-                          <mat-icon>delete</mat-icon>
-                        </button>
+                        @if (canEdit(element)) {
+                          <button mat-icon-button color="primary" matTooltip="Editar" (click)="openModal(element)">
+                            <mat-icon>edit</mat-icon>
+                          </button>
+                        }
+                        @if (!canEdit(element)) {
+                          <button mat-icon-button color="accent" matTooltip="Ver Detalles" (click)="openModal(element)">
+                            <mat-icon>visibility</mat-icon>
+                          </button>
+                        }
+                        @if (canDelete(element)) {
+                          <button mat-icon-button color="warn" matTooltip="Eliminar" 
+                                  (click)="deleteExpediente(element)">
+                            <mat-icon>delete</mat-icon>
+                          </button>
+                        }
                       </td>
                     </ng-container>
 
@@ -313,7 +335,8 @@
           </mat-tab>
 
           <!-- Pestaña Secundaria: Mi Reporte de Actividad -->
-          <mat-tab label="Mi Reporte de Actividad" *ngIf="['IMPRESOR', 'SUPERVISOR', 'ENTREGADOR', 'ADMINISTRADOR', 'OTI'].includes(userPerfil)">
+          @if (['IMPRESOR', 'SUPERVISOR', 'ENTREGADOR', 'ADMINISTRADOR', 'OTI'].includes(userPerfil)) {
+            <mat-tab label="Mi Reporte de Actividad">
             <mat-card class="mat-elevation-z3" style="margin-top: 1rem;">
               
               <div style="padding: 1rem; display: flex; justify-content: flex-end;" class="no-print">
@@ -372,21 +395,24 @@
                 <ng-container matColumnDef="revertir">
                   <th mat-header-cell *matHeaderCellDef> Revertir </th>
                   <td mat-cell *matCellDef="let element">
-                    <button mat-icon-button color="warn" matTooltip="Revertir Impresión (Volver a En Proceso)" 
-                            *ngIf="(userPerfil === 'IMPRESOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.expand?.expediente_id?.estado === 'IMPRESO'"
-                            (click)="revertirAccion(element)">
-                      <mat-icon>undo</mat-icon>
-                    </button>
-                    <button mat-icon-button color="warn" matTooltip="Revertir Verificación (Volver a Impreso)" 
-                            *ngIf="(userPerfil === 'SUPERVISOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.expand?.expediente_id?.estado === 'VERIFICADO'"
-                            (click)="revertirAccion(element)">
-                      <mat-icon>undo</mat-icon>
-                    </button>
-                    <button mat-icon-button color="warn" matTooltip="Revertir Entrega (Volver a Verificado)" 
-                            *ngIf="(userPerfil === 'ENTREGADOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.expand?.expediente_id?.estado === 'ENTREGADO'"
-                            (click)="revertirAccion(element)">
-                      <mat-icon>undo</mat-icon>
-                    </button>
+                    @if ((userPerfil === 'IMPRESOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.expand?.expediente_id?.estado === 'IMPRESO') {
+                      <button mat-icon-button color="warn" matTooltip="Revertir Impresión (Volver a En Proceso)" 
+                              (click)="revertirAccion(element)">
+                        <mat-icon>undo</mat-icon>
+                      </button>
+                    }
+                    @if ((userPerfil === 'SUPERVISOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.expand?.expediente_id?.estado === 'VERIFICADO') {
+                      <button mat-icon-button color="warn" matTooltip="Revertir Verificación (Volver a Impreso)" 
+                              (click)="revertirAccion(element)">
+                        <mat-icon>undo</mat-icon>
+                      </button>
+                    }
+                    @if ((userPerfil === 'ENTREGADOR' || userPerfil === 'OTI' || userPerfil === 'ADMINISTRADOR') && element.expand?.expediente_id?.estado === 'ENTREGADO') {
+                      <button mat-icon-button color="warn" matTooltip="Revertir Entrega (Volver a Verificado)" 
+                              (click)="revertirAccion(element)">
+                        <mat-icon>undo</mat-icon>
+                      </button>
+                    }
                   </td>
                 </ng-container>
 
@@ -402,7 +428,7 @@
               <mat-paginator #atencionesPaginator [pageSizeOptions]="[5, 10, 25]" showFirstLastButtons aria-label="Seleccionar página atenciones"></mat-paginator>
             </mat-card>
           </mat-tab>
-
+        }
         </mat-tab-group>
 
   </div> <!-- End content padding div -->

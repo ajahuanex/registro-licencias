@@ -8,23 +8,28 @@
                class="mat-elevation-z4">
     
     <div class="sidenav-header">
-      <div class="mobile-close" *ngIf="isHandset()">
-        <button mat-icon-button (click)="sidenav.close()"><mat-icon>close</mat-icon></button>
-      </div>
+      @if (isHandset()) {
+        <div class="mobile-close">
+          <button mat-icon-button (click)="sidenav.close()"><mat-icon>close</mat-icon></button>
+        </div>
+      }
       
       <!-- Logo Principal: Centrado y de buen tamaño -->
-      <div class="logo-wrapper" *ngIf="!isHandset() && !isCollapsed() || isHandset()">
-        <img src="logo-drtcp.svg" alt="Logo DRTC-P" class="sidenav-logo">
-        <div class="brand-text">
-          <h2>Expedientes</h2>
-          <span>Licencias SNC</span>
+      @if ((!isHandset() && !isCollapsed()) || isHandset()) {
+        <div class="logo-wrapper">
+          <img src="logo-drtcp.svg" alt="Logo DRTC-P" class="sidenav-logo">
+          <div class="brand-text">
+            <h2>Expedientes</h2>
+            <span>Licencias SNC</span>
+          </div>
         </div>
-      </div>
+      }
       
       <!-- Mini Logo para modo colapsado -->
-      <img src="logo-drtcp.png" alt="Mini Logo" class="sidenav-logo-mini" 
-           *ngIf="!isHandset() && isCollapsed()" 
-           matTooltip="DRTC Puno">
+      @if (!isHandset() && isCollapsed()) {
+        <img src="logo-drtcp.png" alt="Mini Logo" class="sidenav-logo-mini" 
+             matTooltip="DRTC Puno">
+      }
     </div>
 
     <mat-nav-list>
@@ -32,34 +37,48 @@
         @if (user?.['perfil'] !== 'BLOQUEADO') {
           <a mat-list-item routerLink="/dashboard" routerLinkActive="active-link" [routerLinkActiveOptions]="{exact: true}" [matTooltip]="isCollapsed() ? 'Dashboard' : ''">
             <mat-icon matListItemIcon>dashboard</mat-icon>
-            <span matListItemTitle *ngIf="!isCollapsed()">Dashboard</span>
+            @if (!isCollapsed()) {
+              <span matListItemTitle>Dashboard</span>
+            }
           </a>
 
-          <a mat-list-item routerLink="/mis-expedientes" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Mis Expedientes' : ''" *ngIf="user?.['perfil'] !== 'ENTREGADOR'">
-            <mat-icon matListItemIcon>folder_open</mat-icon>
-            <span matListItemTitle *ngIf="!isCollapsed()">Mis Expedientes</span>
-          </a>
+          @if (user?.['perfil'] !== 'ENTREGADOR') {
+            <a mat-list-item routerLink="/mis-expedientes" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Mis Expedientes' : ''">
+              <mat-icon matListItemIcon>folder_open</mat-icon>
+              @if (!isCollapsed()) {
+                <span matListItemTitle>Mis Expedientes</span>
+              }
+            </a>
+          }
         }
 
         @if (user?.['perfil'] === 'ENTREGADOR' || user?.['perfil'] === 'ADMINISTRADOR' || user?.['perfil'] === 'OTI' || user?.['perfil'] === 'SUPERVISOR') {
           <a mat-list-item routerLink="/entregas" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Mesa de Entregas' : ''">
             <mat-icon matListItemIcon>local_shipping</mat-icon>
-            <span matListItemTitle *ngIf="!isCollapsed()">Mesa de Entregas</span>
+            @if (!isCollapsed()) {
+              <span matListItemTitle>Mesa de Entregas</span>
+            }
           </a>
         }
 
         @if (user?.['perfil'] === 'OTI' || user?.['perfil'] === 'ADMINISTRADOR' || user?.['perfil'] === 'SUPERVISOR' || user?.['perfil'] === 'DIRECTIVO') {
           <a mat-list-item routerLink="/reportes/diario" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Reporte Diario' : ''">
             <mat-icon matListItemIcon>summarize</mat-icon>
-            <span matListItemTitle *ngIf="!isCollapsed()">Reporte Diario</span>
+            @if (!isCollapsed()) {
+              <span matListItemTitle>Reporte Diario</span>
+            }
           </a>
           <a mat-list-item routerLink="/reporte-mensual" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Reporte Mensual' : ''">
             <mat-icon matListItemIcon>bar_chart</mat-icon>
-            <span matListItemTitle *ngIf="!isCollapsed()">Reporte Mensual</span>
+            @if (!isCollapsed()) {
+              <span matListItemTitle>Reporte Mensual</span>
+            }
           </a>
           <a mat-list-item routerLink="/historial-reportes" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Historial' : ''">
             <mat-icon matListItemIcon>verified</mat-icon>
-            <span matListItemTitle *ngIf="!isCollapsed()">Historial</span>
+            @if (!isCollapsed()) {
+              <span matListItemTitle>Historial</span>
+            }
           </a>
         }
 
@@ -68,14 +87,18 @@
           
           <a mat-list-item routerLink="/operadores" routerLinkActive="active-link" [matTooltip]="isCollapsed() ? 'Operadores' : ''">
             <mat-icon matListItemIcon>manage_accounts</mat-icon>
-            <span matListItemTitle *ngIf="!isCollapsed()">Operadores</span>
+            @if (!isCollapsed()) {
+              <span matListItemTitle>Operadores</span>
+            }
           </a>
         }
 
         @if (user?.['perfil'] === 'OTI') {
           <a mat-list-item routerLink="/configuraciones" routerLinkActive="active-link" class="oti-settings-link" [matTooltip]="isCollapsed() ? 'Configuración OTI' : ''">
             <mat-icon matListItemIcon>settings_applications</mat-icon>
-            <span matListItemTitle *ngIf="!isCollapsed()">Configuración OTI</span>
+            @if (!isCollapsed()) {
+              <span matListItemTitle>Configuración OTI</span>
+            }
           </a>
         }
       }
@@ -90,15 +113,19 @@
       }
     </mat-nav-list>
 
-    <div class="watermark-wrapper" *ngIf="!isCollapsed()">
-      <div class="session-info" *ngIf="authService.clientIp()">
-        <span class="ip-text">IP: {{ authService.clientIp() }}</span>
-        <span class="ua-text" [matTooltip]="authService.userAgent()">
-          {{ authService.userAgent() | slice:0:25 }}...
-        </span>
+    @if (!isCollapsed()) {
+      <div class="watermark-wrapper">
+        @if (authService.clientIp()) {
+          <div class="session-info">
+            <span class="ip-text">IP: {{ authService.clientIp() }}</span>
+            <span class="ua-text" [matTooltip]="authService.userAgent()">
+              {{ authService.userAgent() | slice:0:25 }}...
+            </span>
+          </div>
+        }
+        <span class="watermark-text">&copy; 2026 JCAQ</span>
       </div>
-      <span class="watermark-text">&copy; 2026 JCAQ</span>
-    </div>
+    }
   </mat-sidenav>
 
   <mat-sidenav-content class="app-content-wrapper" [style.margin-left.px]="isHandset() ? 0 : (isCollapsed() ? 70 : 260)">
@@ -121,19 +148,23 @@
       
       <span class="spacer"></span>
       
-      <div class="user-context" *ngIf="authService.currentUser() as user">
-        <mat-icon>account_circle</mat-icon>
-        <span class="user-name-text hide-on-mobile">{{ user['perfil'] }} | {{ user['nombre'] }}</span>
-      </div>
+      @if (authService.currentUser(); as user) {
+        <div class="user-context">
+          <mat-icon>account_circle</mat-icon>
+          <span class="user-name-text hide-on-mobile">{{ user['perfil'] }} | {{ user['nombre'] }}</span>
+        </div>
+      }
 
       <button mat-icon-button [matMenuTriggerFor]="userMenu" matTooltip="Usuario">
         <mat-icon>more_vert</mat-icon>
       </button>
 
       <mat-menu #userMenu="matMenu" class="custom-user-menu">
-        <div class="menu-header" *ngIf="authService.currentUser() as user">
-          <span class="profile-role">{{ user?.['perfil'] || 'OPERADOR' }}</span>
-        </div>
+        @if (authService.currentUser(); as user) {
+          <div class="menu-header">
+            <span class="profile-role">{{ user?.['perfil'] || 'OPERADOR' }}</span>
+          </div>
+        }
         <mat-divider></mat-divider>
         
         <button mat-menu-item (click)="fileInput.click()">
@@ -169,15 +200,21 @@
 
       <mat-menu #zoomMenu="matMenu">
         <button mat-menu-item (click)="themeService.setFontSize('normal')">
-          <mat-icon *ngIf="themeService.currentFontSize() === 'normal'">check</mat-icon>
+          @if (themeService.currentFontSize() === 'normal') {
+            <mat-icon>check</mat-icon>
+          }
           <span [style.padding-left.px]="themeService.currentFontSize() === 'normal' ? 0 : 40">Normal</span>
         </button>
         <button mat-menu-item (click)="themeService.setFontSize('large')">
-          <mat-icon *ngIf="themeService.currentFontSize() === 'large'">check</mat-icon>
+          @if (themeService.currentFontSize() === 'large') {
+            <mat-icon>check</mat-icon>
+          }
           <span [style.padding-left.px]="themeService.currentFontSize() === 'large' ? 0 : 40">Grande</span>
         </button>
         <button mat-menu-item (click)="themeService.setFontSize('xlarge')">
-          <mat-icon *ngIf="themeService.currentFontSize() === 'xlarge'">check</mat-icon>
+          @if (themeService.currentFontSize() === 'xlarge') {
+            <mat-icon>check</mat-icon>
+          }
           <span [style.padding-left.px]="themeService.currentFontSize() === 'xlarge' ? 0 : 40">Extra Grande</span>
         </button>
       </mat-menu>
